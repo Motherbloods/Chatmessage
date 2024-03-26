@@ -1,0 +1,14 @@
+{
+    "name": "nama-proyek-anda",
+    "version": 2,
+    "builds": [
+      { "src": "app.js", "use": "@vercel/node" }
+    ],
+    "routes": [
+      { "handle": "filesystem" },
+      { "src": "/api/(.*)", "dest": "/src/api/index.routes.js" },
+      { "src": "/(.*)", "dest": "./app.js" },
+      {"src": "/(.*)","dest": "/"}
+    ]
+  }
+  
