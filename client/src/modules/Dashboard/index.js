@@ -196,7 +196,7 @@ const Dashboard = () => {
     const fetchConversations = async () => {
       try {
         const res = await fetch(
-          `http://127.0.0.1:8000/api/conversations/${loggedUser.id}`,
+          `http://127.0.0.1:8000/conversations/${loggedUser.id}`,
           {
             method: "GET",
             headers: {
@@ -259,7 +259,7 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/users/${user.id}`, {
+        const res = await fetch(`http://127.0.0.1:8000/users/${user.id}`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -298,7 +298,7 @@ const Dashboard = () => {
 
   const fetchMessages = async (conversationId, user, message, forward) => {
     try {
-      let url = `http://127.0.0.1:8000/api/messages/${conversationId}?receiverId=${user.id}&senderId=${loggedUser.id}`;
+      let url = `http://127.0.0.1:8000/messages/${conversationId}?receiverId=${user.id}&senderId=${loggedUser.id}`;
       const res = await fetch(url, {
         method: "GET",
         headers: {
@@ -429,7 +429,7 @@ const Dashboard = () => {
               isReplyMessageId: replyData.messageId,
               date: currentDate.toISOString(),
             });
-      const res = await fetch(`http://127.0.0.1:8000/api/messages`, {
+      const res = await fetch(`http://127.0.0.1:8000/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -528,7 +528,7 @@ const Dashboard = () => {
   const deleteNotify = async (messageId) => {
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/message/${messageId}`,
+        `http://127.0.0.1:8000/message/${messageId}`,
         {
           method: "DELETE",
         }

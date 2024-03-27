@@ -18,7 +18,7 @@ export default function Form({ isSignedIn = true }) {
 
     try {
       const res = await fetch(
-        `http://127.0.0.1:8000/api/${isSignedIn ? "login" : "register"}`,
+        `http://127.0.0.1:8000/${isSignedIn ? "login" : "register"}`,
         {
           method: "POST",
           headers: {
