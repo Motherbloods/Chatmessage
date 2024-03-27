@@ -5,10 +5,7 @@
       { "src": "app.js", "use": "@vercel/node" }
     ],
     "routes": [
-      { "handle": "filesystem" },
-      { "src": "/api/(.*)", "dest": "/src/api/index.routes.js" },
-      { "src": "/(.*)", "dest": "./app.js" },
-      {"src": "/(.*)","dest": "/"}
+      { "src": "/(.*)", "dest": "/app.js" }
     ]
   }
   
