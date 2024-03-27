@@ -10,7 +10,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN || "http://127.0.0.1:3000",
+    origin: process.env.CORS_ORIGIN || "https://chatmessage-client.vercel.app/",
     methods: ["GET", "POST"],
   },
   maxHttpBufferSize: 1e8,
