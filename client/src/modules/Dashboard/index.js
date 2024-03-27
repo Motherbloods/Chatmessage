@@ -196,7 +196,7 @@ const Dashboard = () => {
     const fetchConversations = async () => {
       try {
         const res = await fetch(
-          `http://127.0.0.1:8000/conversations/${loggedUser.id}`,
+          `https://chatmessage-server.vercel.app/conversations/${loggedUser.id}`,
           {
             method: "GET",
             headers: {
@@ -259,12 +259,15 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/users/${user.id}`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
+        const res = await fetch(
+          `https://chatmessage-server.vercel.app/users/${user.id}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
         const resData = await res.json();
         setUsers(resData.usersData);
       } catch (error) {
@@ -298,7 +301,7 @@ const Dashboard = () => {
 
   const fetchMessages = async (conversationId, user, message, forward) => {
     try {
-      let url = `http://127.0.0.1:8000/messages/${conversationId}?receiverId=${user.id}&senderId=${loggedUser.id}`;
+      let url = `https://chatmessage-server.vercel.app/messages/${conversationId}?receiverId=${user.id}&senderId=${loggedUser.id}`;
       const res = await fetch(url, {
         method: "GET",
         headers: {
@@ -429,13 +432,16 @@ const Dashboard = () => {
               isReplyMessageId: replyData.messageId,
               date: currentDate.toISOString(),
             });
-      const res = await fetch(`http://127.0.0.1:8000/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: body,
-      });
+      const res = await fetch(
+        `https://chatmessage-server.vercel.app/messages`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: body,
+        }
+      );
 
       if (res.ok) {
         const conversationId = conversationIdForward || messages.conversationId;
@@ -528,7 +534,7 @@ const Dashboard = () => {
   const deleteNotify = async (messageId) => {
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/message/${messageId}`,
+        `https://chatmessage-server.vercel.app/message/${messageId}`,
         {
           method: "DELETE",
         }
