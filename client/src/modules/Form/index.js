@@ -18,9 +18,7 @@ export default function Form({ isSignedIn = true }) {
 
     try {
       const res = await fetch(
-        `https://chatmessage-server.vercel.app/${
-          isSignedIn ? "login" : "register"
-        }`,
+        ` http://127.0.0.1:8080/${isSignedIn ? "login" : "register"}`,
         {
           method: "POST",
           headers: {

@@ -1,8 +1,6 @@
 const mongoose = require("mongoose");
 
-const password = encodeURIComponent("220103178Sukoharjo06");
-const dbName = "chatMessage"; // Ganti dengan nama database Anda
-const url = `mongodb+srv://motherbloodss:${password}@cluster0.ihtev7u.mongodb.net/${dbName}?retryWrites=true&w=majority`;
+const url = "mongodb://localhost:27017/pukesmas"; // Ganti dengan URL MongoDB lokal Anda
 
 (async () => {
   try {
