@@ -49,7 +49,7 @@ const Dashboard = () => {
   }, [currentConversationId]);
 
   useEffect(() => {
-    const socketInstance = io("https://chatmessage-client.vercel.app", {
+    const socketInstance = io("http://127.0.0.1:8080", {
       transports: ["websocket"],
     });
     setSocket(socketInstance);
