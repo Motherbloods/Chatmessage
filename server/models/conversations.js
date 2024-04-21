@@ -1,12 +1,36 @@
 const mongoose = require("mongoose");
 
-const conversationsSchema = new mongoose.Schema({
+const conversationSchema = new mongoose.Schema({
   members: {
-    type: Array,
+    type: [mongoose.Schema.Types.ObjectId],
     required: true,
+    ref: "User",
+  },
+  type: {
+    type: String,
+    enum: ["individual", "group"],
+    default: "individual",
+    required: true,
+  },
+  img: {
+    type: String,
+    default: "uploads\\defaultgrub.jpeg", // Nilai default (kosong) jika tidak ada gambar
+  },
+  name: {
+    type: String,
+    required: function () {
+      return this.type === "group";
+    },
+  },
+  admin: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: function () {
+      return this.type === "group";
+    },
+    ref: "User",
   },
 });
 
-const Conversations = mongoose.model("Conversation", conversationsSchema);
+const Conversations = mongoose.model("Conversations", conversationSchema);
 
 module.exports = Conversations;

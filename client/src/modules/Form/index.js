@@ -8,55 +8,71 @@ export default function Form({ isSignedIn = true }) {
     fullName: !isSignedIn ? undefined : "", // Set fullName to undefined only when isSignedIn is false
     email: "",
     password: "",
+    img: null,
   });
 
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
-    console.log("data", data);
     e.preventDefault();
 
-    try {
-      const res = await fetch(
-        ` http://127.0.0.1:8080/${isSignedIn ? "login" : "register"}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(data),
-        }
-      );
+    // Gunakan FormData untuk mengirim data
+    const formData = new FormData();
+    formData.append("fullName", data.fullName);
+    formData.append("email", data.email);
+    formData.append("password", data.password);
+    formData.append("img", data.img);
 
-      // Log additional information for debugging
+    try {
+      const url = `http://127.0.0.1:8000/api/${
+        isSignedIn ? "login" : "register"
+      }`;
+
+      let options = {
+        method: "POST",
+      };
+
+      if (isSignedIn) {
+        // Jika login, kirim data sebagai JSON
+        options.headers = {
+          "Content-Type": "application/json",
+        };
+        options.body = JSON.stringify(data);
+      } else {
+        // Jika register, kirim data sebagai formData
+        options.body = formData;
+      }
+
+      const res = await fetch(url, options);
+
       console.log("Request URL:", res.url);
-      console.log("Request Payload:", JSON.stringify(data));
+
+      // Cek konten tipe
+      const contentType = res.headers.get("Content-Type");
+      console.log("Content-Type:", contentType);
 
       if (!res.ok) {
-        // Handle error, e.g., display an error message to the user
+        // Tangani kesalahan, misalnya menampilkan pesan kesalahan kepada pengguna
         console.error("Error during fetch:", res.status, res.statusText);
         return;
       }
 
-      const contentType = res.headers.get("Content-Type");
+      // Jika respons JSON, parse JSON
       if (contentType && contentType.includes("application/json")) {
         const resData = await res.json();
         console.log("Response data:", resData);
 
         if (resData.token) {
           localStorage.setItem("user:token", resData.token);
-
-          // Store user details as separate key-value pairs
           localStorage.setItem("user:detail", JSON.stringify(resData.user));
-
           navigate("/");
         }
       } else {
         console.error("Invalid response content type:", contentType);
-        // Handle non-JSON responses as needed
+        // Tangani respons non-JSON seperti yang diperlukan
       }
     } catch (error) {
-      // Handle other types of errors, e.g., network errors
+      // Tangani kesalahan lain, seperti kesalahan jaringan
       console.error("Error during fetch:", error);
     }
   };
@@ -105,6 +121,28 @@ export default function Form({ isSignedIn = true }) {
             value={data.password}
             onChange={(e) => setData({ ...data, password: e.target.value })}
           />
+
+          {!isSignedIn && (
+            <div className="mb-6 w-[75%]">
+              <label
+                htmlFor="imgUpload"
+                className="block mb-2 text-sm font-medium text-gray-700"
+              >
+                Upload Image
+              </label>
+              <input
+                type="file"
+                id="imgUpload"
+                className="border border-gray-300 rounded p-2 w-full"
+                accept="image/*" // Hanya menerima file gambar
+                onChange={(e) => {
+                  // Perbarui state data dengan file gambar yang diunggah
+                  setData({ ...data, img: e.target.files[0] });
+                }}
+              />
+            </div>
+          )}
+
           <Button
             label={isSignedIn ? "Sign In" : "Sign Up"}
             className="w-1/2 mb-2"

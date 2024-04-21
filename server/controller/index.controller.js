@@ -1,6 +1,7 @@
 const User = require("../models/user");
 const Conversations = require("../models/conversations");
 const Messages = require("../models/messages");
+const mongoose = require("mongoose");
 
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
@@ -8,7 +9,8 @@ const jwt = require("jsonwebtoken");
 const register = async (req, res) => {
   try {
     const { fullName, email, password } = req.body;
-
+    // Mengakses gambar yang diunggah melalui req.files (jika banyak file) atau req.file (jika satu file)
+    const imgFiles = req.file;
     if (!fullName || !email || !password) {
       return res.status(400).send("Please fill required fields");
     }
@@ -19,12 +21,19 @@ const register = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ fullName, email, password: hashedPassword });
+
+    const newUser = new User({
+      fullName,
+      email,
+      password: hashedPassword,
+      img: imgFiles.path, // Menggunakan path gambar
+    });
+
     await newUser.save();
 
-    res.status(201).send("User registered successfully");
+    res.status(201).json({ message: "User registered successfully" });
   } catch (err) {
-    console.error("ini");
+    console.error(err);
     res.status(500).send("Internal Server Error");
   }
 };
@@ -71,7 +80,12 @@ const login = async (req, res) => {
         );
         user.save();
         return res.status(200).send({
-          user: { id: user._id, email: user.email, fullName: user.fullName },
+          user: {
+            id: user._id,
+            email: user.email,
+            fullName: user.fullName,
+            img: user.img,
+          },
           token: token,
         });
       }
@@ -99,25 +113,55 @@ const conversations = async (req, res) => {
 const getConversations = async (req, res) => {
   try {
     const userId = req.params.userId;
-    console.log(`Conversations`, userId);
 
+    // Ambil percakapan di mana pengguna adalah anggota
     const conversations = await Conversations.find({
       members: { $in: [userId] },
     });
 
+    // Proses setiap percakapan dan ambil data yang diperlukan
     const conversationsData = await Promise.all(
       conversations.map(async (conversation) => {
-        const receiverId = conversation.members.find(
-          (member) => member !== userId
-        );
-        const receiver = await User.findById(receiverId);
-        // Retrieve messages for the current conversation
-        const messages = await Messages.find({
-          conversationId: conversation._id,
-        });
+        // Memisahkan informasi untuk percakapan individu dan grup
+        if (conversation.type === "group") {
+          const messages = await Messages.find({
+            conversationId: conversation._id,
+          });
 
-        const messagesArray = messages.map((message) => {
+          // Format pesan ke dalam array
+          const messagesArray = messages.map((message) => ({
+            messageId: message._id,
+            message: message.message,
+            id: message.senderId,
+            read: message.read,
+            date: message.createdAt,
+            conversationId: conversation._id,
+            isReply: message.isReply,
+            isForward: message.isForward,
+          }));
+          // Ambil informasi percakapan grup
           return {
+            conversationId: conversation._id,
+            type: conversation.type,
+            name: conversation.name,
+            members: conversation.members,
+            admin: conversation.admin,
+            img: conversation.img,
+            messages: messagesArray,
+          };
+        } else {
+          // Ambil ID penerima jika percakapan individu
+          const receiverId = conversation.members.find(
+            (member) => member.toString() !== userId
+          );
+          const receiver = await User.findById(receiverId);
+          // Ambil pesan untuk percakapan ini
+          const messages = await Messages.find({
+            conversationId: conversation._id,
+          });
+
+          // Format pesan ke dalam array
+          const messagesArray = messages.map((message) => ({
             messageId: message._id,
             message: message.message,
             receiverId: receiver._id,
@@ -127,24 +171,55 @@ const getConversations = async (req, res) => {
             conversationId: conversation._id,
             isReply: message.isReply,
             isForward: message.isForward,
-          };
-        });
+          }));
 
-        return {
-          user: {
-            id: receiver._id,
-            email: receiver.email,
-            fullName: receiver.fullName,
-          },
-          conversationId: conversation._id,
-          messages: messagesArray, // Use a separate array for messages
-        };
+          // Kembalikan data percakapan individu dengan pesan
+          return {
+            user: {
+              id: receiver._id,
+              email: receiver.email,
+              fullName: receiver.fullName,
+              img: receiver.img,
+            },
+            type: conversation.type,
+            conversationId: conversation._id,
+            messages: messagesArray,
+          };
+        }
       })
     );
 
+    // Kirim respons dengan data percakapan
     res.status(200).json({ conversationsData });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+const createGroup = async (req, res) => {
+  try {
+    const { name, adminId, members } = req.body;
+
+    if (!members.includes(adminId)) {
+      members.push(adminId);
+    }
+
+    const newGroupConversation = new Conversations({
+      name,
+      admin: adminId,
+      members: members.map((memberId) => new mongoose.Types.ObjectId(memberId)),
+      type: "group",
+    });
+
+    const savedGroupConversation = await newGroupConversation.save();
+    // Kirim respons sukses dengan data grup baru
+    res.status(200).json({
+      success: "Group created successfully",
+      group: savedGroupConversation,
+    });
+  } catch (err) {
+    console.error("Error creating group:", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
@@ -159,8 +234,8 @@ const messages = async (req, res) => {
       isReply,
       isReplyMessageId,
       isForward,
+      type,
     } = req.body;
-    console.log("ini", isForward);
     // Validasi input
     if (!senderId || !message || (conversationId === "new" && !receiverId)) {
       return res.status(400).json({ error: "Please fill all required fields" });
@@ -168,44 +243,53 @@ const messages = async (req, res) => {
 
     if (conversationId === "new") {
       try {
-        // Cek apakah percakapan sudah ada antara sender dan receiver
-        const existingConversation = await Conversations.findOne({
-          members: { $all: [senderId, receiverId] },
-        });
+        let newConversation;
 
-        if (existingConversation) {
-          // Jika percakapan sudah ada, gunakan conversationId yang ada
-          return res.status(200).json({
-            conversationId: existingConversation._id,
-            senderId,
-            receiverId,
-            message,
-            isReply,
-            isReplyMessageId,
-            isForward,
+        // Jika tipe percakapan adalah 'group'
+        if (type === "group") {
+          // Cek apakah percakapan grup sudah ada antara sender dan semua anggota receiver
+          newConversation = await Conversations.findOne({
+            members: { $all: [senderId, ...receiverId] },
           });
-        }
 
-        // Jika percakapan belum ada, buat yang baru
-        const newConversation = new Conversations({
-          members: [senderId, receiverId],
-        });
-        const savedConversation = await newConversation.save();
+          if (!newConversation) {
+            // Jika percakapan grup belum ada, buat percakapan grup baru
+            newConversation = new Conversations({
+              members: [senderId, ...receiverId],
+            });
+            await newConversation.save();
+          }
+        } else {
+          // Jika bukan grup, buat percakapan individu
+          // Cek apakah percakapan individu sudah ada
+          newConversation = await Conversations.findOne({
+            members: { $all: [senderId, receiverId] },
+          });
+
+          if (!newConversation) {
+            // Jika percakapan individu belum ada, buat percakapan baru
+            newConversation = new Conversations({
+              members: [senderId, receiverId],
+            });
+            await newConversation.save();
+          }
+        }
 
         // Buat pesan pertama dalam percakapan baru
         const newMessage = new Messages({
-          conversationId: savedConversation._id,
+          conversationId: newConversation._id,
           senderId,
-          receiverId,
+          receiverId: type === "group" ? receiverId : receiverId, // Set receiverId berdasarkan type
           message,
           isReply,
           isReplyMessageId,
           isForward,
         });
         await newMessage.save();
+
         // Respons dengan conversationId yang baru dibuat dan detail pesan
         return res.status(200).json({
-          conversationId: savedConversation._id,
+          conversationId: newConversation._id,
           senderId,
           receiverId,
           message: newMessage,
@@ -219,7 +303,7 @@ const messages = async (req, res) => {
       }
     }
 
-    // Jika conversationId bukan "new", simpan pesan
+    // Jika conversationId bukan 'new', simpan pesan ke percakapan yang ada
     const newMessage = new Messages({
       conversationId,
       senderId,
@@ -229,10 +313,10 @@ const messages = async (req, res) => {
       isForward,
     });
     await newMessage.save();
-
-    return res
-      .status(200)
-      .json({ success: "Messages sent successfully", newMessage: newMessage });
+    return res.status(200).json({
+      success: "Messages sent successfully",
+      newMessage,
+    });
   } catch (err) {
     console.error("Error in messages route:", err);
     return res.status(500).json({ error: "Internal Server Error" });
@@ -256,38 +340,81 @@ const getMessages = async (req, res) => {
           const cleanedReplySenderId = replySender?.fullName;
           const receiverId = req.query.receiverId;
           const conversation = await Conversations.findById(conversationId);
+
+          if (conversation.type === "group") {
+            return {
+              message: {
+                loggedUserId: senderId._id,
+                messageId: message._id,
+                message: message.message,
+                id: senderId._id,
+                conversationId: conversationId,
+                date: message.createdAt,
+                read: message.read,
+                isReply: message.isReply,
+                isForward: message.isForward,
+                isReplyMessageId: message.isReplyMessageId,
+                senderOnReply: {
+                  nama: cleanedReplySenderId,
+                  id: replySender?._id,
+                },
+                messageOnReply: replyMessage?.message,
+              },
+              members: conversation.members,
+              admin: conversation.admin,
+              name: conversation.name,
+              type: conversation.type,
+            };
+          } else {
+            return {
+              loggedUserId: senderId._id,
+              messageId: message._id,
+              message: message.message,
+              id: senderId._id,
+              conversationId: conversationId,
+              date: message.createdAt,
+              read: message.read,
+              isReply: message.isReply,
+              isForward: message.isForward,
+              isReplyMessageId: message.isReplyMessageId,
+              senderOnReply: {
+                nama: cleanedReplySenderId,
+                id: replySender?._id,
+              },
+              messageOnReply: replyMessage?.message,
+            };
+          }
           const receivers = conversation.members.filter(
             (member) => member !== cleanedSenderId
           );
-
-          return {
-            loggedUserId: senderId._id,
-            messageId: message._id,
-            message: message.message,
-            id: senderId._id,
-            conversationId: conversationId,
-            date: message.createdAt,
-            read: message.read,
-            isReply: message.isReply,
-            isForward: message.isForward,
-            isReplyMessageId: message.isReplyMessageId,
-            senderOnReply: cleanedReplySenderId,
-            messageOnReply: replyMessage?.message,
-          };
         })
       );
       res.status(200).json({ messagesData });
     };
 
     const conversationId = req.params.conversationId;
-    if (conversationId === "new") {
-      const { senderId, receiverId } = req.query;
+    const { senderId, receiverId, type } = req.query;
+    if (conversationId === "new" && type === "individual") {
+      // if (type === "group") {
+      //   // Percakapan grup
+      //   const newConversation = new Conversations({
+      //     members: [senderId, ...receiverId.split(",")], // Menambahkan senderId dan semua anggota grup
+      //   });
+      //   const savedConversation = await newConversation.save();
+      //   res.status(200).json({
+      //     conversationId: savedConversation._id,
+      //     senderId,
+      //     receiverId,
+      //   });
+      // } else {
+      // }
+
       // Cari percakapan yang sudah ada atau buat baru jika tidak ada
       const checkConversation = await Conversations.findOne({
         members: { $all: [senderId, receiverId] },
       });
 
-      if (checkConversation) {
+      if (checkConversation && checkConversation.type === "individual") {
         // Jika percakapan sudah ada, gunakan conversationId yang ada
         checkMessages(checkConversation._id);
       } else {
@@ -296,7 +423,6 @@ const getMessages = async (req, res) => {
           members: [senderId, receiverId],
         });
         const savedConversation = await newConversation.save();
-
         // Respons dengan conversationId yang baru dibuat dan detail pesan
         res.status(200).json({
           conversationId: savedConversation._id,
@@ -325,6 +451,7 @@ const getUsers = async (req, res) => {
             email: user.email,
             fullName: user.fullName,
             id: user._id,
+            img: user.img,
           },
         };
       })
@@ -340,7 +467,6 @@ const deleteMessage = async (req, res) => {
 
   try {
     const deletedMessage = await Messages.findByIdAndDelete(messageId);
-    console.log(deletedMessage);
     if (!deletedMessage) {
       return res.status(404).json({ error: "Message not found" });
     }
@@ -361,4 +487,5 @@ module.exports = {
   getMessages,
   getUsers,
   deleteMessage,
+  createGroup,
 };

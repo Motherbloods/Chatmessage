@@ -4,6 +4,7 @@ import { io } from "socket.io-client";
 import Emoticon from "../../components/Emoticon";
 import Reply from "../../components/Reply";
 import Search from "../../components/Search";
+import NewChatButton from "../../components/NewChatButton";
 import Forward from "../../components/Forward";
 import "../../index.css";
 
@@ -38,11 +39,19 @@ const Dashboard = () => {
   const [isReply, setIsReply] = useState(false);
   const [isForward, setIsForward] = useState(false);
   const [replyData, setReplyData] = useState({
-    senderId: "",
+    senderId: {
+      nama: "",
+      id: "",
+    },
     message: "",
     messageId: "",
   });
-
+  const [groupData, setGroupData] = useState({
+    name: "",
+    members: "",
+    admin: "",
+    conversationId: "",
+  });
   useEffect(() => {
     // Update ref when state changes
     currentConversationIdRef.current = currentConversationId;
@@ -59,7 +68,6 @@ const Dashboard = () => {
       socketInstance.disconnect();
     };
   }, []);
-
   const handleEmoticonClicks = (event, messageId) => {
     // Mendapatkan posisi klik menggunakan event object
     const { clientX, clientY } = event;
@@ -83,52 +91,99 @@ const Dashboard = () => {
   const conversationIdsSet = new Set(
     conversations.map((conversation) => conversation.conversationId)
   );
-
   useEffect(() => {
     if (socket && user?.id) {
       socket.emit("addUser", user.id);
       socket.on("getUsers", (users) => {});
 
       socket.on("getMessage", (data) => {
-        const conversationIdObject = { conversationId: data.conversationId };
-        if (
-          currentConversationIdRef.current &&
-          (typeof currentConversationIdRef.current === "object"
-            ? data.conversationId ===
-              currentConversationIdRef.current.conversationId
-            : data.conversationId === currentConversationIdRef.current)
-        ) {
-          setMessages((prev) => {
-            const messagesArray = prev.message || [];
-            const updatedMessages = [
-              ...messagesArray,
-              {
-                id: data.id,
-                message: data.message,
-                date: data.date,
-                isReply: data.isReply,
-                messageOnReply: data.messageOnReply,
-                senderOnReply: data.senderOnReply,
-                isForward: data.isForward,
-              },
-            ];
-            setConversations((prevConversations) => {
-              // Find the conversation that needs to be updated
-              return prevConversations.map((conversation) =>
-                conversation.conversationId === data.conversationId
-                  ? {
-                      ...conversation,
-                      messages: updatedMessages,
-                    }
-                  : conversation
-              );
+        const isGroupConversation = Array.isArray(data.message.receiverId);
+        const conversationId =
+          data.conversationId || data.message.conversationId;
+        if (isGroupConversation && conversationId) {
+          if (currentConversationIdRef.current === conversationId) {
+            // Jika receiverId adalah array
+            setMessages((prevMessages) => {
+              const newMessage = {
+                admin: data.admin,
+                members: data.members,
+                message: {
+                  id: data.message.id,
+                  message: data.message.message,
+                  date: data.message.date,
+                  isReply: data.message.isReply,
+                  messageOnReply: data.message.messageOnReply,
+                  senderOnReply: data.message.senderOnReply,
+                  isForward: data.message.isForward,
+                  loggedUserId: data.message.loggedUserId,
+                  conversationId: data.message.conversationId,
+                  // tambahkan properti lainnya yang diperlukan
+                },
+                name: data.name,
+                type: data.type,
+              };
+              setConversations((prevConversations) => {
+                // Find the conversation that needs to be updated
+                return prevConversations.map((conversation) =>
+                  conversation.conversationId === data.message.conversationId
+                    ? {
+                        ...conversation,
+                        messages: [
+                          ...conversation.messages,
+                          newMessage.message,
+                        ],
+                      }
+                    : conversation
+                );
+              });
+              return [...prevMessages, newMessage];
             });
-            return {
-              ...prev,
-              message: updatedMessages,
-            };
-          });
+          }
+        } else {
+          const conversationIdObject = { conversationId: data.conversationId };
+          if (
+            currentConversationIdRef.current &&
+            (typeof currentConversationIdRef.current === "object"
+              ? data.conversationId ===
+                currentConversationIdRef.current.conversationId
+              : data.conversationId === currentConversationIdRef.current)
+          ) {
+            if (!Array.isArray(data.message.receiverId || data.receiverId)) {
+              setMessages((prev) => {
+                const messagesArray = prev.message || [];
+                const updatedMessages = [
+                  ...messagesArray,
+                  {
+                    id: data.id,
+                    message: data.message,
+                    date: data.date,
+                    isReply: data.isReply,
+                    messageOnReply: data.messageOnReply,
+                    senderOnReply: data.senderOnReply,
+                    isForward: data.isForward,
+                  },
+                ];
+                setConversations((prevConversations) => {
+                  // Find the conversation that needs to be updated
+                  return prevConversations.map((conversation) =>
+                    conversation.conversationId === data.conversationId
+                      ? {
+                          ...conversation,
+                          messages: updatedMessages,
+                        }
+                      : conversation
+                  );
+                });
+                return {
+                  ...prev,
+                  message: updatedMessages,
+                };
+              });
+            }
+          }
         }
+        // if (Array.isArray(data.receiverId)) {
+        // }
       });
 
       socket.on("getConversations", (data) => {
@@ -161,17 +216,17 @@ const Dashboard = () => {
         socket.off("getLastMessage");
       };
     }
-  }, [socket, user.id, messages.message?.id]);
+  }, [socket, user.id, messages?.message?.id]);
 
   useEffect(() => {
     messageRef?.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.message]);
+  }, [messages?.[messages.length - 1]?.message || messages?.message]);
 
   useEffect(() => {
     if (messageIdRef.current) {
       messageIdRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages.message]);
+  }, [messages?.[messages.length - 1]?.message || messages?.message]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -196,7 +251,7 @@ const Dashboard = () => {
     const fetchConversations = async () => {
       try {
         const res = await fetch(
-          ` http://127.0.0.1:8080/conversations/${loggedUser.id}`,
+          ` http://127.0.0.1:8000/api/conversations/${loggedUser.id}`,
           {
             method: "GET",
             headers: {
@@ -205,7 +260,6 @@ const Dashboard = () => {
           }
         );
         const resData = await res.json();
-
         resData.conversationsData.forEach((conversation) => {
           socket.emit("sendActiveUser", {
             aktif: false,
@@ -259,7 +313,7 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch(` http://127.0.0.1:8080/users/${user.id}`, {
+        const res = await fetch(` http://127.0.0.1:8000/api/users/${user.id}`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -278,27 +332,72 @@ const Dashboard = () => {
   }, [user.id]);
 
   const handleNewOrNoConcersation = (userId, message, forward) => {
-    const targetConversation = conversations.find(
-      (conv) => conv.user.id === userId.id
-    );
+    // const targetConversation = conversations.find(
+    //   (conv) => conv.user && conv.user.id === userId.id
+    // );
+    let targetConversation;
+    if (userId && typeof userId === "object" && userId.id) {
+      // Cari percakapan berdasarkan ID pengguna
+      targetConversation = conversations.find(
+        (conv) => conv.user && conv.user.id === userId.id
+      );
+    } else if (Array.isArray(userId)) {
+      // Cari percakapan berdasarkan ID pengguna pertama
+      targetConversation = conversations.find(
+        (conv) => conv.members === userId
+      );
+    } else {
+      // Jika userId tidak valid, keluarkan pesan kesalahan atau tangani kasus ini sesuai kebutuhan Anda
+      console.error("Invalid userId format");
+      return;
+    }
+
     if (forward) {
       fetchMessages(
         targetConversation ? targetConversation.conversationId : "new",
         userId,
         message,
+        targetConversation ? targetConversation.type : "individual",
+        targetConversation ? targetConversation.name : "",
         true
       );
     } else {
       fetchMessages(
         targetConversation ? targetConversation.conversationId : "new",
-        userId
+        userId,
+        targetConversation ? targetConversation.type : "individual",
+        targetConversation ? targetConversation.name : ""
       );
     }
   };
 
-  const fetchMessages = async (conversationId, user, message, forward) => {
+  const fetchMessages = async (
+    conversationId,
+    user,
+    type,
+    name,
+    admin,
+    message,
+    forward
+  ) => {
     try {
-      let url = ` http://127.0.0.1:8080/messages/${conversationId}?receiverId=${user.id}&senderId=${loggedUser.id}`;
+      let url;
+      if (type === "group") {
+        // if (Array.isArray(user)) {
+        //   const filteredMembers = user.filter(
+        //     (member) => member !== loggedUser.id
+        //   );
+        setGroupData({
+          name: name,
+          members: user,
+          admin: admin,
+          conversationId: conversationId,
+        });
+
+        url = ` http://127.0.0.1:8000/api/messages/${conversationId}?senderId=${loggedUser.id}&type=${type}`;
+      } else {
+        url = ` http://127.0.0.1:8000/api/messages/${conversationId}?receiverId=${user.id}&senderId=${loggedUser.id}&type=${type}`;
+      }
       const res = await fetch(url, {
         method: "GET",
         headers: {
@@ -306,9 +405,8 @@ const Dashboard = () => {
         },
       });
       const resData = await res.json();
-      if (conversationId === "new") {
+      if (conversationId === "new" && type === "individual") {
         const newConversationId = resData.conversationId;
-
         if (resData.messagesData && resData.messagesData.length === 0) {
           socket.emit("sendLastMessages", {
             conversationId: newConversationId,
@@ -376,11 +474,15 @@ const Dashboard = () => {
           // Handle the case where resData.messagesData is undefined or null
           console.error("Error: messagesData is undefined or null");
         }
-        setMessages({
-          message: resData.messagesData,
-          receiver: user,
-          conversationId,
-        });
+        if (type === "individual") {
+          setMessages({
+            message: resData.messagesData,
+            receiver: user,
+            conversationId,
+          });
+        } else {
+          setMessages(resData.messagesData);
+        }
         setCurrentConversationId(conversationId);
         if (forward && message) {
           sendMessages(conversationId, user, message);
@@ -402,34 +504,50 @@ const Dashboard = () => {
   ) => {
     const currentDate = new Date(); // Get the current date and time
     try {
+      let members;
+      if (Array.isArray(messages)) {
+        const filteredMembers = groupData.members.filter(
+          (member) => member !== loggedUser.id
+        );
+        members = filteredMembers;
+      }
+
       const body =
         conversationIdForward && userForward && messageforward
           ? JSON.stringify({
               conversationId: conversationIdForward,
               senderId: user.id,
-              receiverId: userForward.id,
+              receiverId: messages.receiver ? messages.receiver.id : members,
               message: messageforward,
               date: currentDate.toISOString(),
               isForward: true,
+              type: members ? "group" : "individual",
             })
           : !isReply
           ? JSON.stringify({
-              conversationId: messages.conversationId,
+              conversationId: messages.conversationId
+                ? messages.conversationId
+                : groupData.conversationId,
               senderId: user.id,
-              receiverId: messages.receiver.id,
+              receiverId: messages.receiver ? messages.receiver.id : members,
               message,
               date: currentDate.toISOString(),
+              type: members ? "group" : "individual",
             })
           : JSON.stringify({
-              conversationId: messages.conversationId,
+              conversationId: messages.conversationId
+                ? messages.conversationId
+                : groupData.conversationId,
               senderId: user.id,
-              receiverId: messages.receiver.id,
+              receiverId: messages.receiver ? messages.receiver.id : members,
               message,
               isReply: true,
               isReplyMessageId: replyData.messageId,
               date: currentDate.toISOString(),
+              type: members ? "group" : "individual",
             });
-      const res = await fetch(` http://127.0.0.1:8080/messages`, {
+
+      const res = await fetch(` http://127.0.0.1:8000/api/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -438,8 +556,15 @@ const Dashboard = () => {
       });
 
       if (res.ok) {
-        const conversationId = conversationIdForward || messages.conversationId;
-        const receiverId = userForward ? userForward.id : messages.receiver.id;
+        const conversationId =
+          conversationIdForward ||
+          messages.conversationId ||
+          groupData.conversationId;
+        const receiverId = userForward
+          ? userForward.id
+          : messages.receiver
+          ? messages.receiver?.id
+          : members;
         const messageOne = messageforward ? messageforward : message;
         // After successfully sending the message, emit sendConversations
         socket.emit("sendConversations", {
@@ -448,6 +573,9 @@ const Dashboard = () => {
           receiverId,
           message: messageOne,
           date: currentDate.toISOString(),
+          admin: members ? groupData.admin : "",
+          type: members ? "group" : "individual",
+          name: members ? groupData.name : "",
         });
 
         socket.emit("sendMessage", {
@@ -460,11 +588,14 @@ const Dashboard = () => {
           isForward: isForward,
           messageOnReply: replyData ? replyData.message : null,
           senderOnReply: replyData ? replyData.senderId : null,
+          admin: members ? groupData.admin : "",
+          type: members ? "group" : "individual",
+          name: members ? groupData.name : "",
         });
         socket.emit("sendLastMessages", {
           conversationId,
           lastMessages: [
-            message || messages.message,
+            message || messages?.message,
             {
               loggedUserId: loggedUser.id,
               message: messageOne,
@@ -497,14 +628,18 @@ const Dashboard = () => {
     };
   }, []);
   const formatTime = (timestamp) => {
-    const date = new Date(timestamp);
-    const utc = date.getTime() + date.getTimezoneOffset() * 60000; // Convert to UTC
-    const gmt7 = new Date(utc + 3600000 * 7); // Adjust for GMT+7
+    if (timestamp) {
+      const date = new Date(timestamp);
+      const utc = date.getTime() + date.getTimezoneOffset() * 60000; // Convert to UTC
+      const gmt7 = new Date(utc + 3600000 * 7); // Adjust for GMT+7
 
-    const hours = gmt7.getHours().toString().padStart(2, "0");
-    const minutes = gmt7.getMinutes().toString().padStart(2, "0");
+      const hours = gmt7.getHours().toString().padStart(2, "0");
+      const minutes = gmt7.getMinutes().toString().padStart(2, "0");
 
-    return `${hours}:${minutes}`;
+      return `${hours}:${minutes}`;
+    } else {
+      return "";
+    }
   };
 
   const handleEmoticonClick = (messageId) => {
@@ -516,10 +651,13 @@ const Dashboard = () => {
     setIsCopied(value);
   };
 
-  const replyNotifiy = (value, senderId, message, messageId) => {
+  const replyNotifiy = (value, senderId, namaSender, message, messageId) => {
     setIsReply(value);
+    const sender = users.find((user) => user?.user?.id === senderId);
     setReplyData({
-      senderId: senderId,
+      senderId: sender
+        ? { nama: sender.user.fullName, id: sender.user.id }
+        : { nama: namaSender, id: senderId },
       message: message,
       messageId: messageId,
     });
@@ -528,7 +666,7 @@ const Dashboard = () => {
   const deleteNotify = async (messageId) => {
     try {
       const response = await fetch(
-        ` http://127.0.0.1:8080/message/${messageId}`,
+        ` http://127.0.0.1:8000/api/message/${messageId}`,
         {
           method: "DELETE",
         }
@@ -564,19 +702,25 @@ const Dashboard = () => {
     // Filter users berdasarkan email atau fullName
     const filteredUsers = users.filter(
       (user) =>
-        user.user.email?.toLowerCase().includes(searchValue.toLowerCase()) ||
-        user.user.fullName?.toLowerCase().includes(searchValue.toLowerCase())
+        user.user?.email?.toLowerCase().includes(searchValue.toLowerCase()) ||
+        user.user?.fullName?.toLowerCase().includes(searchValue.toLowerCase())
     );
-
     const filteredMessages = Object.values(conversationMessage)
-      .flatMap((conversation) =>
-        conversation.messages.map((message) => ({
-          message,
-          user: conversation.user,
-        }))
-      )
+      .flatMap((conversation) => {
+        // Tambahkan pemeriksaan untuk memastikan bahwa conversation.messages ada dan merupakan array
+        if (Array.isArray(conversation.messages)) {
+          return conversation.messages.map((message) => ({
+            message,
+            user: conversation.user || conversation.members,
+            conversationName: conversation.name ? conversation.name : null,
+          }));
+        }
+
+        // Jika conversation.messages tidak ada atau bukan array, kembalikan array kosong
+        return [];
+      })
       .filter(({ message }) =>
-        message.message.toLowerCase().includes(searchValue.toLowerCase())
+        message?.message?.toLowerCase()?.includes(searchValue.toLowerCase())
       );
 
     return { filteredMessages, filteredUsers };
@@ -596,10 +740,6 @@ const Dashboard = () => {
     setShowReply(false);
   };
 
-  const listCheck = (value) => {
-    // console.log("ini value", value);
-  };
-
   const handleForwardButtonClick = (value) => {
     setShowForward(value);
   };
@@ -615,13 +755,26 @@ const Dashboard = () => {
     setExpandedMessages(newExpandedMessages);
   };
 
-  const sendMessageForward = (receiver, message) => {
-    if (receiver.length == 1) {
-      handleNewOrNoConcersation(receiver[0], message, true);
-      setIsForward(true);
-    }
+  const mappingConversation = (conversationId) => {
+    conversations.map((conversation) => {
+      const conversationCheck = conversation.conversationId === conversationId;
+      if (conversationCheck) {
+        return {
+          members: conversation.members,
+        };
+      }
+    });
   };
 
+  const getRandomColor = () => {
+    // Generate random RGB values
+    const r = Math.floor(Math.random() * 256);
+    const g = Math.floor(Math.random() * 256);
+    const b = Math.floor(Math.random() * 256);
+    // Convert RGB to hexadecimal
+    const color = "#" + r.toString(16) + g.toString(16) + b.toString(16);
+    return color;
+  };
   return (
     <div className="w-screen flex">
       <div
@@ -653,73 +806,75 @@ const Dashboard = () => {
             </div>
           </div> */}
         </div>
-
         <div className="mx-4 mt-2">
           <div>
             {searchValue ? (
               <div>
                 {/* Tampilkan filteredMessages dan filteredUsers */}
-                {filteredMessages.map(({ message, user }, index) => {
-                  // Ensure messageId exists and is not null
-                  const messageId = message.messageId || `message_${index}`; // Fallback to an index-based ID if messageId is not available
-                  if (!messageIdRef.current) {
-                    messageIdRef.current = {}; // Initialize if not already initialized
-                  }
-                  messageIdRef.current[index] = messageId;
-                  const messageDate = new Date(message.date);
-                  const today = new Date();
-                  const isToday =
-                    messageDate.getDate() === today.getDate() &&
-                    messageDate.getMonth() === today.getMonth() &&
-                    messageDate.getFullYear() === today.getFullYear();
+                {filteredMessages.map(
+                  ({ message, user, conversationName }, index) => {
+                    // Ensure messageId exists and is not null
+                    const messageId = message.messageId || `message_${index}`; // Fallback to an index-based ID if messageId is not available
+                    if (!messageIdRef.current) {
+                      messageIdRef.current = {}; // Initialize if not already initialized
+                    }
+                    messageIdRef.current[index] = messageId;
+                    const messageDate = new Date(message.date);
+                    const today = new Date();
+                    const isToday =
+                      messageDate.getDate() === today.getDate() &&
+                      messageDate.getMonth() === today.getMonth() &&
+                      messageDate.getFullYear() === today.getFullYear();
 
-                  let formattedDate = "";
-                  if (isToday) {
-                    // Jika pesan diterima hari ini, tampilkan jam
-                    const hours = messageDate.getHours();
-                    const minutes = messageDate.getMinutes();
-                    const formattedHours = hours < 10 ? "0" + hours : hours;
-                    const formattedMinutes =
-                      minutes < 10 ? "0" + minutes : minutes;
-                    formattedDate = `${formattedHours}:${formattedMinutes}`;
-                  } else {
-                    // Jika pesan diterima pada tanggal lain, tampilkan tanggal, bulan, dan tahun
-                    const day =
-                      messageDate.getDate() < 10
-                        ? "0" + messageDate.getDate()
-                        : messageDate.getDate();
-                    const month =
-                      messageDate.getMonth() + 1 < 10
-                        ? "0" + (messageDate.getMonth() + 1)
-                        : messageDate.getMonth() + 1;
-                    const year = messageDate.getFullYear();
-                    formattedDate = `${day}/${month}/${year}`;
-                  }
+                    let formattedDate = "";
+                    if (isToday) {
+                      // Jika pesan diterima hari ini, tampilkan jam
+                      const hours = messageDate.getHours();
+                      const minutes = messageDate.getMinutes();
+                      const formattedHours = hours < 10 ? "0" + hours : hours;
+                      const formattedMinutes =
+                        minutes < 10 ? "0" + minutes : minutes;
+                      formattedDate = `${formattedHours}:${formattedMinutes}`;
+                    } else {
+                      // Jika pesan diterima pada tanggal lain, tampilkan tanggal, bulan, dan tahun
+                      const day =
+                        messageDate.getDate() < 10
+                          ? "0" + messageDate.getDate()
+                          : messageDate.getDate();
+                      const month =
+                        messageDate.getMonth() + 1 < 10
+                          ? "0" + (messageDate.getMonth() + 1)
+                          : messageDate.getMonth() + 1;
+                      const year = messageDate.getFullYear();
+                      formattedDate = `${day}/${month}/${year}`;
+                    }
 
-                  return (
-                    <div
-                      ref={(ref) => {
-                        if (index === filteredMessages.length - 1) {
-                          // Assign the ref of the last message
-                          messageIdRef.current = ref;
-                        }
-                      }}
-                      className={`${messageId} overflow-hidden bg-[#e6e6e6] mt-2 rounded-md h-16 items-center py-2 hover:bg-[#e6e6e6] hover:rounded-md p-2 cursor-pointer border-black transition duration-100 `}
-                      key={index}
-                    >
+                    return (
                       <div
-                        className="flex flex-row justify-between"
-                        onClick={() => handleNewOrNoConcersation(user)}
+                        ref={(ref) => {
+                          if (index === filteredMessages.length - 1) {
+                            // Assign the ref of the last message
+                            messageIdRef.current = ref;
+                          }
+                        }}
+                        className={`${messageId} overflow-hidden bg-[#e6e6e6] mt-2 rounded-md h-16 items-center py-2 hover:bg-[#e6e6e6] hover:rounded-md p-2 cursor-pointer border-black transition duration-100 `}
+                        key={index}
                       >
-                        <p className="font-semibold truncate text-wrap overflow-hidden">
-                          {user.fullName || user.email}
-                        </p>
-                        <p className="font-lg">{formattedDate}</p>
+                        <div
+                          className="flex flex-row justify-between"
+                          onClick={() => handleNewOrNoConcersation(user)}
+                        >
+                          {conversationName ? "" : ""}
+                          <p className="font-semibold truncate text-wrap overflow-hidden">
+                            {user?.fullName || user?.email || conversationName}
+                          </p>
+                          <p className="font-lg">{formattedDate}</p>
+                        </div>
+                        <p>{message.message}</p>
                       </div>
-                      <p>{message.message}</p>
-                    </div>
-                  );
-                })}
+                    );
+                  }
+                )}
                 {filteredUsers.map((user, index) => (
                   <div
                     onClick={() => handleNewOrNoConcersation(user.user)}
@@ -735,10 +890,22 @@ const Dashboard = () => {
               conversations
                 .filter(
                   (conversation) =>
-                    conversation.messages &&
-                    Array.isArray(conversation.messages) &&
-                    conversation.messages.length > 0
+                    (conversation.messages &&
+                      Array.isArray(conversation.messages) &&
+                      conversation.messages.length > 0) ||
+                    conversation.type === "group"
                 )
+                .sort((a, b) => {
+                  const lastMessageA = a.messages[a.messages.length - 1];
+                  const lastMessageB = b.messages[b.messages.length - 1];
+                  const dateA = lastMessageA
+                    ? new Date(lastMessageA.date)
+                    : new Date(a.date);
+                  const dateB = lastMessageB
+                    ? new Date(lastMessageB.date)
+                    : new Date(b.date);
+                  return dateB - dateA;
+                })
                 .map((conversation, index) => (
                   <div
                     key={conversation.conversationId}
@@ -753,20 +920,26 @@ const Dashboard = () => {
                       onClick={() => {
                         fetchMessages(
                           conversation.conversationId,
-                          conversation.user
+                          conversation.user || conversation.members,
+                          conversation.type,
+                          conversation.name,
+                          conversation.admin
                         );
                         setCurrentConversationId(conversation.conversationId);
                       }}
                     >
                       <img
-                        src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1964&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+                        src={`http://127.0.0.1:8000/${
+                          conversation.user?.img || conversation?.img
+                        }`}
                         className="w-12 h-12 rounded-full border border-primary flex-shrink-0"
                         alt="Profile"
                       />
                       <div className="ml-6 overflow-hidden flex-grow">
                         <div className="flex flex-row justify-between items-center">
                           <h3 className="text-lg font-semibold">
-                            {conversation.user.fullName ||
+                            {conversation.user?.fullName ||
+                              conversation.name ||
                               conversation.conversationId}
                           </h3>
                           <div
@@ -784,50 +957,55 @@ const Dashboard = () => {
                         </div>
                         <div className="flex items-start ">
                           <div className="flex-shrink-0 mr-1">
-                            {lastMessages.read ? (
-                              // Display the second icon when read is true
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="icon icon-tabler icon-tabler-checks mt-[6.5px]"
-                                width="15"
-                                height="15"
-                                viewBox="0 0 24 24"
-                                strokeWidth="1.5"
-                                stroke="#2c3e50"
-                                fill="none"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path
-                                  stroke="none"
-                                  d="M0 0h24v24H0z"
+                            {conversation.messages &&
+                            conversation.messages.length > 0 ? (
+                              lastMessages.read ? (
+                                // Display the second icon when read is true
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="icon icon-tabler icon-tabler-checks mt-[6.5px]"
+                                  width="15"
+                                  height="15"
+                                  viewBox="0 0 24 24"
+                                  strokeWidth="1.5"
+                                  stroke="#2c3e50"
                                   fill="none"
-                                />
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path
+                                    stroke="none"
+                                    d="M0 0h24v24H0z"
+                                    fill="none"
+                                  />
 
-                                <path d="M7 12l5 5l10 -10" />
-                                <path d="M2 12l5 5m5 -5l5 -5" />
-                              </svg>
-                            ) : (
-                              // Display the first icon when read is false
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="icon icon-tabler icon-tabler-check mt-[6.5px]"
-                                width="15"
-                                height="15"
-                                viewBox="0 0 24 24"
-                                strokeWidth="1.5"
-                                stroke="currentColor"
-                                fill="none"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path
-                                  stroke="none"
-                                  d="M0 0h24v24H0z"
+                                  <path d="M7 12l5 5l10 -10" />
+                                  <path d="M2 12l5 5m5 -5l5 -5" />
+                                </svg>
+                              ) : (
+                                // Display the first icon when read is false
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="icon icon-tabler icon-tabler-check mt-[6.5px]"
+                                  width="15"
+                                  height="15"
+                                  viewBox="0 0 24 24"
+                                  strokeWidth="1.5"
+                                  stroke="currentColor"
                                   fill="none"
-                                />
-                                <path d="M5 12l5 5l10 -10" />
-                              </svg>
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path
+                                    stroke="none"
+                                    d="M0 0h24v24H0z"
+                                    fill="none"
+                                  />
+                                  <path d="M5 12l5 5l10 -10" />
+                                </svg>
+                              )
+                            ) : (
+                              ""
                             )}
                           </div>
                           {lastMessages &&
@@ -845,7 +1023,11 @@ const Dashboard = () => {
                                   minHeight: "1em",
                                 }}
                               >
-                                {lastMessages.message}
+                                {
+                                  conversation?.messages[
+                                    conversation?.messages?.length - 1
+                                  ]?.message
+                                }
                               </p>
                             </div>
                           ) : (
@@ -885,16 +1067,17 @@ const Dashboard = () => {
             )}
           </div>
         </div>
+        <NewChatButton users={users} userLogin={user} socket={socket} />
       </div>
 
       <div
         className={` ${
           userInConversation && window.innerWidth < 1024
             ? "w-[100%] "
-            : "hidden w-0"
+            : "w-[100%] "
         } md:w-[100%] lg:flex h-screen bg-white flex-col`}
       >
-        {userInConversation && messages.receiver && (
+        {userInConversation && (
           <div
             className="w-[100%] bg-secondary flex items-center px-7 py-2 border-b-[1px] border-[#e1dfda] drop-shadow-[0_4px_3px_rgba(0,0,0,0.1)]"
             ref={chatContainerRef}
@@ -919,19 +1102,50 @@ const Dashboard = () => {
             </svg>
 
             <img
-              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1964&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+              src={`http://127.0.0.1:8000/${
+                messages?.receiver?.img ||
+                conversations.find(
+                  (conversation) =>
+                    conversation.conversationId === currentConversationId
+                )?.img ||
+                "default.jpg" // Ganti 'default.jpg' dengan nama file gambar default jika tidak ditemukan
+              }`}
               className="w-12 h-12 rounded-full border border-primary flex-shrink-0"
               alt="Profile"
             />
 
-            <div className="ml-4 mr-auto">
-              <h3 className="text-lg font-medium">
-                {messages.receiver.fullName}
-              </h3>
-              <p className="text-sm font-thin text-gray-600">
-                {messages.receiver.email}
-              </p>
-            </div>
+            {messages?.receiver ? (
+              <div className="ml-4 mr-auto">
+                <h3 className="text-lg font-medium">
+                  {messages?.receiver.fullName}
+                </h3>
+                <p className="text-sm font-thin text-gray-600">
+                  {messages?.receiver.email}
+                </p>
+              </div>
+            ) : (
+              <div className="ml-4 mr-auto">
+                <h3 className="text-lg font-medium">{groupData.name}</h3>
+                <p className="text-sm font-thin text-gray-600">
+                  {groupData.members
+                    .map((memberId) => {
+                      const userGroup = users.find(
+                        (user) => user.user.id === memberId
+                      );
+                      const admin = user.id === memberId;
+                      if (admin) {
+                        return "You";
+                      } else if (userGroup) {
+                        return userGroup.user.fullName;
+                      } else {
+                        return memberId;
+                      }
+                    })
+                    .join(", ")}
+                </p>
+              </div>
+            )}
+
             <div className="cursor-pointer">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -957,170 +1171,200 @@ const Dashboard = () => {
         {userInConversation ? (
           <div className="h-[75%] w-full overflow-scroll shadow-sm">
             <div className="p-14">
-              {messages.message && messages.message.length > 0 ? (
-                messages.message.map(
-                  (
-                    {
-                      id,
-                      message,
-                      date,
-                      messageId,
-                      isReply,
-                      messageOnReply,
-                      senderOnReply,
-                      isForward,
-                    },
-                    index
-                  ) => {
-                    const senderId = id === loggedUser.id;
-                    const messageDate = new Date(date);
-                    const hours = messageDate.getHours();
-                    // Get the minutes and format with leading zero if needed
-                    const minutes = messageDate.getMinutes();
-                    const formattedMinutes =
-                      minutes < 10 ? `0${minutes}` : minutes;
+              {(messages?.message && messages?.message.length > 0
+                ? messages?.message
+                : messages
+              )?.length > 0 ? (
+                (messages?.message && messages?.message.length > 0
+                  ? messages?.message
+                  : messages
+                ).map((messageObj, index) => {
+                  const senderId =
+                    (messageObj.message?.loggedUserId ?? messageObj.id) ===
+                    loggedUser.id;
+                  const messageDate = new Date(
+                    messageObj.message.date || messageObj.date
+                  );
+                  const senderIdGroup = users.find(
+                    (user) =>
+                      user.user.id ===
+                      (messageObj.message?.loggedUserId || messageObj.id)
+                  );
+                  const hours = messageDate.getHours();
+                  const minutes = messageDate.getMinutes();
+                  const formattedMinutes =
+                    minutes < 10 ? `0${minutes}` : minutes;
+                  const randomColor = getRandomColor();
 
-                    return (
-                      <div className="static" key={index}>
+                  return (
+                    <div className="static" key={index}>
+                      <div
+                        className={`flex ${
+                          senderId ? "flex-row-reverse" : "flex-row"
+                        } items-center`}
+                      >
                         <div
-                          className={`flex ${
-                            senderId ? "flex-row-reverse" : "flex-row"
-                          } items-center`}
+                          className={`max-w-[45%] rounded-b-xl px-4 py-3 mt-6 shadow-sm break-all ${
+                            senderId
+                              ? "bg-[#1d3630] rounded-tl-xl text-[#f7f4ee]"
+                              : "bg-secondary rounded-tr-xl text-[#06140e]"
+                          }`}
                         >
-                          <div
-                            className={`max-w-[45%] rounded-b-xl px-4 py-3 mt-6 shadow-sm break-all ${
-                              senderId
-                                ? "bg-[#1d3630] rounded-tl-xl text-[#f7f4ee]"
-                                : "bg-secondary rounded-tr-xl text-[#06140e]"
+                          {(messageObj.message.isForward ||
+                            message.isForward) && (
+                            <div className="flex flex-row items-center">
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="icon icon-tabler icon-tabler-arrow-forward-up"
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                strokeWidth="1.5"
+                                stroke="#9CA3AF"
+                                fill="none"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path
+                                  stroke="none"
+                                  d="M0 0h24v24H0z"
+                                  fill="none"
+                                />
+                                <path d="M15 14l4 -4l-4 -4" />
+                                <path d="M19 10h-11a4 4 0 1 0 0 8h1" />
+                              </svg>
+                              <p className="font-light italic text-xs text-gray-400">
+                                Forwarded
+                              </p>
+                            </div>
+                          )}
+                          <p
+                            className={`font-semibold text-blue-500  ${
+                              messageObj.message.isReply || messageObj.isReply
+                                ? "mt-2"
+                                : "mt-0"
                             }`}
                           >
-                            {isForward && (
-                              <div className="flex flex-row items-center">
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  className="icon icon-tabler icon-tabler-arrow-forward-up"
-                                  width="18"
-                                  height="18"
-                                  viewBox="0 0 24 24"
-                                  strokeWidth="1.5"
-                                  stroke="#9CA3AF"
-                                  fill="none"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
+                            {senderIdGroup?.user.fullName}
+                          </p>
+
+                          {(messageObj.message.isReply ||
+                            messageObj.isReply) && (
+                            <div className="w-full bg-[#e1dfda] border-[#e1dfda] border-t-[1px] rounded-md">
+                              <div
+                                className={`bg-[#e6e6e6] p-[6px] border rounded-md border-[#e1dfda] drop-shadow-[0_4px_3px_rgba(0,0,0,0.13)] `}
+                              >
+                                <p className=" font-semibold text-sm text-[#1e6554]">
+                                  {messageObj.message.senderOnReply?.id ===
+                                  loggedUser.id
+                                    ? "You"
+                                    : messageObj.message.senderOnReply?.nama ||
+                                      messageObj.senderOnReply?.nama}
+                                </p>
+                                <p
+                                  className=" text-gray-900 text-[10px] overflow-hidden"
+                                  style={{
+                                    overflowWrap: "break-word",
+                                    overflow: "hidden",
+                                    display: "-webkit-box",
+                                    WebkitBoxOrient: "vertical",
+                                    WebkitLineClamp: 1,
+                                    minHeight: "1em",
+                                  }}
                                 >
-                                  <path
-                                    stroke="none"
-                                    d="M0 0h24v24H0z"
-                                    fill="none"
-                                  />
-                                  <path d="M15 14l4 -4l-4 -4" />
-                                  <path d="M19 10h-11a4 4 0 1 0 0 8h1" />
-                                </svg>
-                                <p className="font-light italic text-xs text-gray-400">
-                                  Forwarded
+                                  {messageObj.message.messageOnReply ||
+                                    messageObj.messageOnReply}
                                 </p>
                               </div>
-                            )}
-                            {isReply && (
-                              <div className="w-full bg-[#e1dfda] border-[#e1dfda] border-t-[1px] rounded-md">
-                                <div
-                                  className={`bg-[#e6e6e6] p-[6px] border rounded-md border-[#e1dfda] drop-shadow-[0_4px_3px_rgba(0,0,0,0.13)] `}
-                                >
-                                  <p className="ml-1 font-semibold text-base text-[#1e6554]">
-                                    {senderOnReply}
-                                  </p>
-                                  <p
-                                    className="ml-1 text-gray-900 text-sm overflow-hidden"
-                                    style={{
-                                      overflowWrap: "break-word",
-                                      overflow: "hidden",
-                                      display: "-webkit-box",
-                                      WebkitBoxOrient: "vertical",
-                                      WebkitLineClamp: 1,
-                                      minHeight: "1em",
-                                    }}
-                                  >
-                                    {messageOnReply}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                            <p className={`${isReply ? "mt-2" : "mt-0"}`}>
+                            </div>
+                          )}
+
+                          <p
+                            className={`text-sm ${
+                              messageObj.message.isReply || messageObj.isReply
+                                ? "mt-2"
+                                : "mt-0"
+                            }`}
+                          >
+                            {expandedMessages[index]
+                              ? messageObj.message.message || messageObj.message
+                              : `${(
+                                  messageObj.message.message ||
+                                  messageObj.message
+                                ).slice(0, 200)}`}
+                          </p>
+                          {(messageObj.message.message || messageObj.message)
+                            .length > 200 && (
+                            <button
+                              onClick={() => handleToggleExpand(index)}
+                              className={`text-blue-500 cursor-pointer focus:outline-none transition-max-height duration-300 ease-in-out overflow-hidden ${
+                                expandedMessages[index]
+                                  ? "max-h-full"
+                                  : "max-h-8"
+                              }`}
+                            >
                               {expandedMessages[index]
-                                ? message
-                                : `${message.slice(0, 200)}`}
-                            </p>
-                            {message.length > 200 && (
-                              <button
-                                onClick={() => handleToggleExpand(index)}
-                                className={`text-blue-500 cursor-pointer focus:outline-none transition-max-height duration-300 ease-in-out overflow-hidden ${
-                                  expandedMessages[index]
-                                    ? "max-h-full"
-                                    : "max-h-8"
-                                }`}
-                              >
-                                {expandedMessages[index]
-                                  ? "Show Less"
-                                  : "...Show More"}
-                              </button>
-                            )}
+                                ? "Show Less"
+                                : "...Show More"}
+                            </button>
+                          )}
 
-                            <div className="flex flex-row-reverse">
-                              <span
-                                className={`text-xs mt-2 ${
-                                  senderId ? "text-white-500" : "text-gray-500"
-                                }`}
-                              >
-                                {`${hours}:${formattedMinutes}`}
-                              </span>
-                              {senderId && (
-                                <div>
-                                  {lastMessages.read ? (
-                                    // Display the second icon when read is true
-                                    <svg
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      className="icon icon-tabler icon-tabler-checks mt-2"
-                                      width="15"
-                                      height="15"
-                                      viewBox="0 0 24 24"
-                                      strokeWidth="1.5"
-                                      stroke="blue"
+                          <div className="flex flex-row justify-end">
+                            <span
+                              className={`text-xs mt-2 ${
+                                senderId ? "text-white-500" : "text-gray-500"
+                              }`}
+                            >
+                              {`${hours}:${formattedMinutes}`}
+                            </span>
+                            {senderId && (
+                              <div>
+                                {lastMessages.read ? (
+                                  // Display the second icon when read is true
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="icon icon-tabler icon-tabler-checks mt-2"
+                                    width="15"
+                                    height="15"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth="1.5"
+                                    stroke="blue"
+                                    fill="none"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path
+                                      stroke="none"
+                                      d="M0 0h24v24H0z"
                                       fill="none"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    >
-                                      <path
-                                        stroke="none"
-                                        d="M0 0h24v24H0z"
-                                        fill="none"
-                                      />
+                                    />
 
-                                      <path d="M7 12l5 5l10 -10" />
-                                      <path d="M2 12l5 5m5 -5l5 -5" />
-                                    </svg>
-                                  ) : (
-                                    // Display the first icon when read is false
-                                    <svg
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      className="icon icon-tabler icon-tabler-check mt-[6.5px]"
-                                      width="15"
-                                      height="15"
-                                      viewBox="0 0 24 24"
-                                      strokeWidth="1.5"
-                                      stroke="currentColor"
+                                    <path d="M7 12l5 5l10 -10" />
+                                    <path d="M2 12l5 5m5 -5l5 -5" />
+                                  </svg>
+                                ) : (
+                                  // Display the first icon when read is false
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="icon icon-tabler icon-tabler-check mt-[6.5px]"
+                                    width="15"
+                                    height="15"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth="1.5"
+                                    stroke="currentColor"
+                                    fill="none"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path
+                                      stroke="none"
+                                      d="M0 0h24v24H0z"
                                       fill="none"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    >
-                                      <path
-                                        stroke="none"
-                                        d="M0 0h24v24H0z"
-                                        fill="none"
-                                      />
-                                      <path d="M5 12l5 5l10 -10" />
-                                    </svg>
-                                  )}
-                                  {/* <svg
+                                    />
+                                    <path d="M5 12l5 5l10 -10" />
+                                  </svg>
+                                )}
+                                {/* <svg
                                     xmlns="http://www.w3.org/2000/svg"
                                     className="icon icon-tabler icon-tabler-checks mt-2"
                                     width="15"
@@ -1141,72 +1385,106 @@ const Dashboard = () => {
                                     <path d="M7 12l5 5l10 -10" />
                                     <path d="M2 12l5 5m5 -5l5 -5" />
                                   </svg> */}
-                                </div>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </div>
-                          <div className="relative">
-                            <Emoticon
-                              onClick={(event) => {
-                                handleEmoticonClicks(event, messageId);
-                                handleEmoticonClick(messageId);
-                                setShowReplyForMessageId(messageId);
-                              }}
-                              ref={emoticonRef}
-                              className={senderId ? "mr-2" : "ml-2"}
-                            />
-                            <div
-                              className={`transition-all duration-500 transform ${
-                                showReplyForMessageId === messageId && showReply
-                                  ? "translate-y-0 opacity-100"
-                                  : "translate-y-10 opacity-0"
-                              } absolute bottom-0 left-0`}
-                            >
-                              {/* {showForward && (
+                        </div>
+                        <div className="relative">
+                          <Emoticon
+                            onClick={(event) => {
+                              handleEmoticonClicks(
+                                event,
+                                messageObj.message.messageId ||
+                                  messageObj.messageId
+                              );
+                              handleEmoticonClick(
+                                messageObj.message.messageId ||
+                                  messageObj.messageId
+                              );
+                              setShowReplyForMessageId(
+                                messageObj.message.messageId ||
+                                  messageObj.messageId
+                              );
+                            }}
+                            ref={emoticonRef}
+                            className={senderId ? "mr-2" : "ml-2"}
+                          />
+                          <div
+                            className={`transition-all duration-500 transform ${
+                              showReplyForMessageId ===
+                                (messageObj.message.messageId ||
+                                  messageObj.messageId) && showReply
+                                ? "translate-y-0 opacity-100"
+                                : "translate-y-10 opacity-0"
+                            } absolute bottom-0 left-0`}
+                          >
+                            {/* {showForward && (
                               <Forward
                                 className={"absolute right-[10px]"}
                                 userList={users}
                                 listCheck={listCheck}
                               />
                             )} */}
-                              {showReplyForMessageId === messageId &&
-                                showReply && (
-                                  <Reply
-                                    messageId={showReplyForMessageId}
-                                    message={message}
-                                    senderId={id}
-                                    nama={
-                                      id === loggedUser.id
-                                        ? loggedUser.fullName
-                                        : messages.receiver?.fullName
-                                    }
-                                    notifyDashboard={notifyDashboard}
-                                    replyNotifiy={replyNotifiy}
-                                    deleteNotify={deleteNotify}
-                                    className={`absolute ${
-                                      senderId ? "right-[-20px]" : "left-[10px]"
-                                    } ${
-                                      replyPosition.top > 300 &&
-                                      replyPosition.top < 523
-                                        ? "bottom-8"
-                                        : "top-1"
-                                    }`}
-                                    ref={(ref) =>
-                                      (replyRef.current[messageId] = ref)
-                                    }
-                                    onCloseReply={handleCloseReply}
-                                    onShowForward={handleForwardButtonClick}
-                                  />
-                                )}
-                            </div>
+                            {showReplyForMessageId ===
+                              (messageObj.message.messageId ||
+                                messageObj.messageId) &&
+                              showReply && (
+                                <Reply
+                                  messageId={showReplyForMessageId}
+                                  message={
+                                    messageObj.message.message ||
+                                    messageObj.message
+                                  }
+                                  senderId={
+                                    messageObj.message.id || messageObj.id
+                                  }
+                                  nama={
+                                    (messageObj.message.id || messageObj.id) ===
+                                      loggedUser.id && !messageObj.receiver
+                                      ? {
+                                          nama: loggedUser.fullName,
+                                          id: loggedUser.id,
+                                        }
+                                      : messages.receiver
+                                      ? {
+                                          nama: messages.receiver?.fullName,
+                                          id: messages.receiver?.id,
+                                        }
+                                      : {
+                                          nama: "habib",
+                                          id: messageObj.message.id,
+                                        }
+                                  }
+                                  notifyDashboard={notifyDashboard}
+                                  replyNotifiy={replyNotifiy}
+                                  deleteNotify={deleteNotify}
+                                  className={`absolute ${
+                                    senderId ? "right-[-20px]" : "left-[10px]"
+                                  } ${
+                                    replyPosition.top > 300 &&
+                                    replyPosition.top < 523
+                                      ? "bottom-8"
+                                      : "top-1"
+                                  }`}
+                                  ref={(ref) =>
+                                    (replyRef.current[
+                                      messageObj.message.messageId ||
+                                        messageObj.messageId
+                                    ] = ref)
+                                  }
+                                  onCloseReply={handleCloseReply}
+                                  onShowForward={handleForwardButtonClick}
+                                />
+                              )}
                           </div>
                         </div>
-                        <div ref={messageRef}></div>
                       </div>
-                    );
-                  }
-                )
+                      <div ref={messageRef}></div>
+                    </div>
+                  );
+                })
               ) : (
+                // Tampilkan div "No messages" jika `messages` kosong atau tidak ada
                 <div className="justify-center text-center text-lg font-semibold">
                   No Messages
                 </div>
@@ -1218,6 +1496,7 @@ const Dashboard = () => {
             <div className="text-lg font-semibold">No Conversation Active</div>
           </div>
         )}
+
         {/* {showForward && (
           <Forward
             className={"absolute right-[10px]"}
@@ -1230,11 +1509,11 @@ const Dashboard = () => {
           />
         )} */}
         {isReply && (
-          <div className="w-full  pr-4 pl-14 pt-4 bg-[#e1dfda] border-[#e1dfda] border-t-[1px] rounded-tl-md rounded-tr-md transition-all duration-500 transform translate-y-0 opacity-100 ">
+          <div className="w-[75%]  pr-4 pl-14 absolute bottom-[100px] pt-4 bg-[#e1dfda] border-[#e1dfda] border-t-[1px] rounded-tl-md rounded-tr-md transition-all duration-500 transform translate-y-0 opacity-100 ">
             <div className="bg-[#e6e6e6] p-[6px] border rounded-md border-[#e1dfda] drop-shadow-[0_4px_3px_rgba(0,0,0,0.13)] flex items-center justify-between ">
               <div>
                 <p className=" ml-1 font-semibold text-base text-[#1e6554]">
-                  {replyData.senderId}
+                  {replyData.senderId.nama}
                 </p>
                 <p className="ml-1 text-gray-900 text-sm">
                   {replyData.message}
@@ -1349,7 +1628,7 @@ const Dashboard = () => {
                 >
                   <div>
                     <img
-                      src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1964&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+                      src={`http://127.0.0.1:8000/${user.user.img}`}
                       className="w-[60px] h-[60px] rounded-full p-[2px] border border-primary"
                       alt="Profile"
                     />

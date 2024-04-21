@@ -1,0 +1,54 @@
+/* Transition for sliding effect */
+.slide-transition {
+    transition: transform 0.5s ease-in-out;
+}
+
+/* Keyframes for sliding animation */
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+/* Class for showing the sliding animation */
+.slide-enter {
+    animation: slideUp 0.5s forwards;
+}
+
+/* Keyframes for sliding down animation (hiding the element) */
+@keyframes slideDown {
+    from {
+        transform: translateY(0);
+    }
+    to {
+        transform: translateY(100%);
+    }
+}
+
+/* Class for hiding with sliding down */
+.slide-exit {
+    animation: slideDown 0.5s forwards;
+}
+
+
+/* Kelas umum untuk NewGrubList */
+.new-grub-list {
+    /* Transisi untuk properti transform dan opacity */
+    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+  }
+  
+  /* Kelas hidden untuk menyembunyikan elemen */
+  .hidden {
+    transform: scale(0); /* Mengecilkan elemen ke ukuran 0 */
+    opacity: 0; /* Mengurangi opasitas ke 0 */
+  }
+  
+  /* Kelas visible untuk menampilkan elemen */
+  .visible {
+    transform: scale(1); /* Membuat elemen menjadi ukuran penuh */
+    opacity: 1; /* Mengatur opasitas menjadi 1 */
+  }
+  

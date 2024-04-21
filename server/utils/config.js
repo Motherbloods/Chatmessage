@@ -1,12 +1,14 @@
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
+const path = require("path");
 const socketIO = require("socket.io");
 const Users = require("../models/user");
 const Conversations = require("../models/conversations");
 const Messages = require("../models/messages");
 
 const app = express();
+app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 const server = http.createServer(app);
 const io = socketIO(server, {
   cors: {
@@ -82,66 +84,140 @@ io.on("connection", (socket) => {
         isForward,
         messageOnReply,
         senderOnReply,
+        admin,
+        type,
+        name,
       }) => {
-        const receiver = users.find((user) => user.userId === receiverId);
         const sender = users.find((user) => user.userId === senderId);
-
-        // Check if receiver is defined before accessing properties
-
         const user = await Users.findById(senderId);
-        if (receiver) {
-          io.to(sender.socketId).to(receiver.socketId).emit("getMessage", {
-            message,
-            conversationId,
-            receiverId,
-            id: user.id,
-            date,
-            isForward,
-            isReply,
-            messageOnReply,
-            senderOnReply,
-          });
+        const messageData = Array.isArray(receiverId)
+          ? {
+              message: {
+                message,
+                conversationId,
+                receiverId,
+                id: user.id,
+                date,
+                isForward,
+                isReply,
+                messageOnReply,
+                senderOnReply: {
+                  nama: senderOnReply.nama,
+                  id: senderOnReply.id,
+                },
+                loggedUserId: senderId,
+              },
+              admin,
+              name,
+              type,
+              members: receiverId,
+            }
+          : {
+              message,
+              conversationId,
+              receiverId,
+              id: user.id,
+              date,
+              isForward,
+              isReply,
+              messageOnReply,
+              senderOnReply: {
+                nama: senderOnReply.nama,
+                id: senderOnReply.id,
+              },
+              loggedUserId: senderId,
+            };
+
+        const receivers = [];
+
+        if (Array.isArray(receiverId)) {
+          for (const id of receiverId) {
+            const receiver = users.find((user) => user.userId === id);
+            if (receiver) {
+              receivers.push(receiver);
+            }
+          }
         } else {
-          io.to(sender.socketId).emit("getMessage", {
-            message,
-            conversationId,
-            receiverId,
-            id: user.id,
-            date,
-            isReply,
-            messageOnReply,
-            senderOnReply,
-            isForward,
-          });
+          const receiver = users.find((user) => user.userId === receiverId);
+          if (receiver) {
+            receivers.push(receiver);
+          }
         }
+
+        const socketIds = [
+          sender.socketId,
+          ...receivers.map((receiver) => receiver.socketId),
+        ];
+
+        io.to(socketIds).emit("getMessage", {
+          ...messageData,
+          admin,
+          type,
+          name,
+          members: receiverId,
+        });
       }
     );
     socket.on(
       "sendConversations",
-      async ({ conversationId, receiverId, senderId, message, date }) => {
+      async ({
+        conversationId,
+        receiverId,
+        senderId,
+        message,
+        date,
+        admin,
+        type,
+        name,
+        img,
+      }) => {
         try {
-          const receiver = users.find((user) => user.userId === receiverId);
-          const user = await Users.findById(receiverId);
-
           const sender = users.find((user) => user.userId === senderId);
-          const existingConversation = await Conversations.findOne({
-            members: { $all: [senderId, receiverId] },
-          });
-          if (existingConversation) {
+          const user = await Users.findById(senderId);
+
+          if (Array.isArray(receiverId)) {
+            receiverId.forEach(async (id) => {
+              const receiver = users.find((user) => user.userId === id);
+              if (receiver) {
+                io.to(sender?.socketId)
+                  .to(receiver?.socketId)
+                  .emit("getConversations", {
+                    conversationId,
+                    admin,
+                    members: receiverId,
+                    messages: [{ message }],
+                    name,
+                    type,
+                    img,
+                  });
+              } else {
+                io.to(sender?.socketId).emit("getConversations", {
+                  conversationId,
+                  admin,
+                  members: receiverId,
+                  messages: [{ message }],
+                  name,
+                  type,
+                  img,
+                });
+              }
+            });
+          } else {
+            const receiver = users.find((user) => user.userId === receiverId);
             if (receiver) {
-              io.to(sender.socketId)
-                .to(receiver.socketId)
+              io.to(sender?.socketId)
+                .to(receiver?.socketId)
                 .emit("getConversations", {
-                  conversationId: existingConversation._id,
+                  conversationId,
                   user: receiver,
                   senderId,
                   messages: [{ message }],
                   date,
                 });
             } else {
-              io.to(sender.socketId).emit("getConversations", {
-                conversationId: existingConversation._id,
-                user: receiver || user,
+              io.to(sender?.socketId).emit("getConversations", {
+                conversationId,
+                user: user || receiver,
                 senderId,
                 messages: [{ message }],
                 date,
@@ -149,7 +225,7 @@ io.on("connection", (socket) => {
             }
           }
         } catch (e) {
-          console.error("e");
+          console.error("Error in sendConversations:", e);
         }
       }
     );
@@ -158,11 +234,11 @@ io.on("connection", (socket) => {
       "sendLastMessages",
       async ({ loggedUserId, conversationId, lastMessages, read }) => {
         if (lastMessages && lastMessages.length > 0) {
-          let receivers;
           let senderUser;
-          let receiverUser;
-          // Pemilihan Sender dan Receiver
+          let receiverIds;
+
           senderUser = lastMessages[lastMessages.length - 1].id;
+
           const lastMessage = await Messages.findOne(
             { conversationId: conversationId },
             {},
@@ -171,71 +247,51 @@ io.on("connection", (socket) => {
           const conversation = await Conversations.findById(
             lastMessage?.conversationId
           );
-
-          receivers = conversation?.members.filter(
+          receiverIds = conversation?.members.filter(
             (member) => member !== senderUser
           );
 
-          const messages = await Messages.find({
-            conversationId: conversationId,
-          });
-
-          receiverUser = receivers?.toString();
-
           const senderId = users.find((user) => user.userId === senderUser);
-          const receiverId = users.find((user) => user.userId === receiverUser);
-
-          // Cari elemen di usersActiveConversation yang cocok dengan receiverId
-          const matchingUserActiveConversation = usersActiveConversation.find(
-            (activeUser) => activeUser.user?.userId === receiverId?.userId
+          const receiverUsers = receiverIds.map((receiverId) =>
+            users.find((user) => user.userId === receiverId)
           );
-          if (matchingUserActiveConversation) {
+
+          const matchingUserActiveConversations =
+            usersActiveConversation.filter((activeUser) =>
+              receiverIds.includes(activeUser.user?.userId)
+            );
+
+          if (matchingUserActiveConversations.length > 0) {
             await Messages.updateOne(
               { _id: lastMessage._id },
               { $set: { read: true } }
             );
-
-            // Ambil data terbaru dari database setelah pembaruan
             const updatedMessage = await Messages.findOne({
               _id: lastMessage._id,
             });
-
-            // Perbarui lastMessage dengan data terbaru
             if (updatedMessage) {
               lastMessage.read = updatedMessage.read;
             }
           } else {
             console.log("userId tidak cocok atau receiverId tidak ditemukan");
           }
-          if (receiverId && senderId) {
-            const messagePayload = {
-              lastMessage,
-              jelas: "pengirim dan receiver",
-            };
-            io.to(receiverId.socketId)
-              .to(senderId.socketId)
-              .emit("getLastMessage", messagePayload);
-          } else if (receiverId) {
-            const messagePayload = {
-              lastMessage,
-              jelas: "pesan berhasil dikirim  receiver saja",
-            };
-            io.to(receiverId.socketId).emit("getLastMessage", messagePayload);
-          } else if (senderId) {
-            const messagePayload = {
-              lastMessage,
-              jelas: "pesan berhasil dikirim sender sja",
-            };
-            io.to(senderId.socketId).emit("getLastMessage", messagePayload);
-          } else {
-            console.error("Tidak ada pengguna yang sesuai.");
-          }
+
+          const receiverSocketIds = receiverUsers.flatMap((receiver) =>
+            receiver ? [receiver.socketId] : []
+          );
+          const socketIds = [senderId?.socketId, ...receiverSocketIds];
+
+          const messagePayload = {
+            lastMessage,
+            jelas: `pengirim dan ${receiverIds.length} penerima`,
+          };
+
+          io.to(socketIds).emit("getLastMessage", messagePayload);
         } else {
           console.error("Tidak ada pesan terakhir atau pesan terakhir kosong.");
         }
       }
     );
-
     socket.on("disconnect", () => {
       users = users.filter((user) => user.socketId !== socket.id);
       io.emit("getUsers", users);

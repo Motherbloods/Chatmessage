@@ -20,7 +20,6 @@ const Forward = React.forwardRef(
     const [selectedItems, setSelectedItems] = useState([]);
     const [searchTerm, setSearchTerm] = useState("");
     const containerRef = useRef(null);
-    console.log("ini dsfsdf", containerRef);
 
     useEffect(() => {
       const handleClickOutside = (event) => {
@@ -28,7 +27,6 @@ const Forward = React.forwardRef(
           containerRef.current &&
           !containerRef.current.contains(event.target)
         ) {
-          console.log("ini diluar");
           onCloseReply(); // Panggil fungsi onClose saat klik di luar area div
         }
       };

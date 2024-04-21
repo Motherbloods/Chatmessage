@@ -148,12 +148,10 @@ function setupSocket(server) {
                 { _id: lastMessage.messageId },
                 { $set: { read: true } }
               );
-              console.log(lastMessage.messageId);
               // Ambil data terbaru dari database setelah pembaruan
               const updatedMessage = await Messages.findOne({
                 _id: lastMessage.messageId,
               });
-              console.log("ini udpate", updatedMessage);
 
               // Perbarui lastMessage dengan data terbaru
               if (updatedMessage) {

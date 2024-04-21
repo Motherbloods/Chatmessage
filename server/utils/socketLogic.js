@@ -39,7 +39,6 @@ function socketLogic(io, users, usersActiveConversation) {
 
       socket.on("sendMessage", async (data) => {
         await controller.handleMessages(io, data);
-        console.log("ini getmessage");
         // Handle "getmessage"
         // ...
       });
@@ -85,7 +84,6 @@ function socketLogic(io, users, usersActiveConversation) {
       socket.on(
         "sendLastMessages",
         async ({ loggedUserId, conversationId, lastMessages, read }) => {
-          console.log("lastmessage");
           if (lastMessages && lastMessages.length > 0) {
             let receivers;
             let senderUser;
@@ -117,12 +115,10 @@ function socketLogic(io, users, usersActiveConversation) {
                 { _id: lastMessage.messageId },
                 { $set: { read: true } }
               );
-              console.log(lastMessage.messageId);
               // Ambil data terbaru dari database setelah pembaruan
               const updatedMessage = await Messages.findOne({
                 _id: lastMessage.messageId,
               });
-              console.log("ini udpate", updatedMessage);
 
               // Perbarui lastMessage dengan data terbaru
               if (updatedMessage) {

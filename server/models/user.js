@@ -10,6 +10,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  img: {
+    type: String,
+    default: "", // Nilai default (kosong) jika tidak ada gambar
+  },
   password: {
     type: String,
     required: true,

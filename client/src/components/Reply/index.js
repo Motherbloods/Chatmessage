@@ -15,9 +15,27 @@ const Reply = React.forwardRef(
     },
     ref
   ) => {
+    // console.log(
+    //   "Received",
+    //   messageId,
+    //   "p",
+    //   message,
+    //   "q",
+    //   senderId,
+    //   "r",
+    //   nama,
+    //   "s",
+    //   "t",
+    //   className,
+    //   "u",
+    //   onCloseReply,
+    //   "v",
+    //   replyNotifiy,
+    //   onShowForward,
+    //   deleteNotify
+    // );
     const [isCopied, setIsCopied] = useState(false);
     const containerRef = useRef(null);
-    console.log(`Received`, containerRef);
     useEffect(() => {
       const handleClickOutside = (event) => {
         if (
@@ -67,11 +85,10 @@ const Reply = React.forwardRef(
       document.body.removeChild(textarea);
 
       // Log a message or perform any additional actions
-      console.log(`Copied message: ${isCopied}`);
     };
 
     const handleReplyClick = () => {
-      replyNotifiy(true, nama, message, messageId);
+      replyNotifiy(true, nama.id, nama.nama, message, messageId);
       onCloseReply();
     };
 
