@@ -31,10 +31,13 @@ const NewGrubList = ({ onClosePopup, users, userLogin, socket }) => {
 
   // Fungsi untuk menangani penyimpanan data
   const handleSave = async (e) => {
+    const currentDate = new Date();
     setIsFinished(false);
     e.preventDefault();
     const options = {
       name: data.name,
+      description: data.description,
+      createdAt: currentDate.toISOString(),
       adminId: userLogin.id,
       members: selectedUsers.map(({ user }) => user.id),
     };
@@ -55,7 +58,7 @@ const NewGrubList = ({ onClosePopup, users, userLogin, socket }) => {
 
     if (res.ok) {
       const resData = await res.json();
-      const currentDate = new Date();
+      console.log("inifsdfds", resData);
       socket.emit("sendConversations", {
         conversationId: resData.group._id,
         senderId: resData.group.admin,
@@ -66,6 +69,7 @@ const NewGrubList = ({ onClosePopup, users, userLogin, socket }) => {
         type: resData.group.type,
         name: resData.group.name,
         img: resData.group.img,
+        description: resData.group.description,
       });
     }
   };

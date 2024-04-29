@@ -148,6 +148,8 @@ const getConversations = async (req, res) => {
             admin: conversation.admin,
             img: conversation.img,
             messages: messagesArray,
+            createdAt: conversation.createdAt,
+            description: conversation.description,
           };
         } else {
           // Ambil ID penerima jika percakapan individu
@@ -155,6 +157,7 @@ const getConversations = async (req, res) => {
             (member) => member.toString() !== userId
           );
           const receiver = await User.findById(receiverId);
+
           // Ambil pesan untuk percakapan ini
           const messages = await Messages.find({
             conversationId: conversation._id,
@@ -164,7 +167,7 @@ const getConversations = async (req, res) => {
           const messagesArray = messages.map((message) => ({
             messageId: message._id,
             message: message.message,
-            receiverId: receiver._id,
+            receiverId: receiver ? receiver._id : "",
             id: message.senderId,
             read: message.read,
             date: message.createdAt,
@@ -176,10 +179,10 @@ const getConversations = async (req, res) => {
           // Kembalikan data percakapan individu dengan pesan
           return {
             user: {
-              id: receiver._id,
-              email: receiver.email,
-              fullName: receiver.fullName,
-              img: receiver.img,
+              id: receiver ? receiver._id : "",
+              email: receiver ? receiver.email : "",
+              fullName: receiver ? receiver.fullName : "",
+              img: receiver ? receiver.img : "",
             },
             type: conversation.type,
             conversationId: conversation._id,
@@ -199,7 +202,7 @@ const getConversations = async (req, res) => {
 
 const createGroup = async (req, res) => {
   try {
-    const { name, adminId, members } = req.body;
+    const { name, adminId, members, description, createdAt } = req.body;
 
     if (!members.includes(adminId)) {
       members.push(adminId);
@@ -209,6 +212,8 @@ const createGroup = async (req, res) => {
       name,
       admin: adminId,
       members: members.map((memberId) => new mongoose.Types.ObjectId(memberId)),
+      createdAt,
+      description,
       type: "group",
     });
 
@@ -478,6 +483,89 @@ const deleteMessage = async (req, res) => {
   }
 };
 
+const updateImg = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const imgFile = req.file;
+    // Cari percakapan atau user berdasarkan ID
+    let dataToUpdate;
+    let conversationIdUser = [];
+    let receiverId = [];
+    // Cek apakah percakapan ada
+    let conversation = await Conversations.findById(id);
+
+    if (!conversation) {
+      let conversations = await Conversations.find({ members: id });
+
+      // Jika tidak ada percakapan di mana pengguna adalah anggota
+      const user = await User.findById(id);
+      if (!user) {
+        return res.status(404).json({ message: "Data not found" });
+      }
+
+      // Jika ditemukan, simpan data pengguna untuk diperbarui
+      dataToUpdate = user;
+
+      // Jika ada percakapan di mana pengguna adalah anggota, simpan ID percakapan untuk diperbarui
+      conversationIdUser = conversations.map(
+        (conversation) => conversation._id
+      );
+      receiverId = conversations.reduce((acc, conv) => {
+        return acc.concat(
+          conv.members.filter(
+            (member) => member.toString() !== id && member !== ""
+          )
+        ); // Menambahkan filter untuk memastikan member tidak sama dengan id dan memiliki nilai ID yang valid
+      }, []);
+    } else {
+      // Jika percakapan ditemukan, simpan data percakapan untuk diperbarui
+      dataToUpdate = conversation;
+    }
+    // Perbarui properti img dari percakapan dengan nilai yang sesuai dari req.file
+    const path = imgFile.path;
+    const index = path.indexOf("uploads");
+
+    // Mengambil substring dari indeks 'uploads' hingga akhir string
+    const relativePath = path.substring(index);
+    dataToUpdate.img = relativePath;
+    // Simpan perubahan
+    await dataToUpdate.save();
+    // Persiapkan data yang akan dikirim ke frontend
+    const dataToSend = conversation
+      ? {
+          conversationId: dataToUpdate._id,
+          senderId: dataToUpdate.admin,
+          members: dataToUpdate.members,
+          admin: dataToUpdate.admin,
+          type: dataToUpdate.type,
+          name: dataToUpdate.name,
+          img: dataToUpdate.img,
+        }
+      : {
+          conversationId: conversationIdUser,
+          messages: "",
+          receiverId,
+          type: dataToUpdate.type,
+          user: {
+            email: dataToUpdate.email,
+            fullName: dataToUpdate.fullName,
+            id: dataToUpdate._id,
+            img: dataToUpdate.img,
+          },
+        };
+
+    // Kirim respons ke klien dengan data yang disiapkan
+    res.status(200).json({
+      message: "Image updated successfully",
+      data: dataToSend,
+    });
+  } catch (error) {
+    console.error("Error updating image:", error);
+    // Kirim respons error ke klien
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -488,4 +576,5 @@ module.exports = {
   getUsers,
   deleteMessage,
   createGroup,
+  updateImg,
 };

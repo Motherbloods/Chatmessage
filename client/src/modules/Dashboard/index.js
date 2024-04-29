@@ -6,7 +6,10 @@ import Reply from "../../components/Reply";
 import Search from "../../components/Search";
 import NewChatButton from "../../components/NewChatButton";
 import Forward from "../../components/Forward";
+import MenuButton from "../../components/MenuButton";
+import MenuProfile from "../../components/MenuProfile";
 import "../../index.css";
+import ViewProfileGroub from "../../components/ViewProfileGroub";
 
 const Dashboard = () => {
   const currentConversationIdRef = useRef(null);
@@ -14,13 +17,14 @@ const Dashboard = () => {
   const replyRef = useRef({});
   const chatContainerRef = useRef(null);
   const messageRef = useRef(null);
-  const messageIdRef = useRef(null);
+  const messageIdRef = useRef({});
   const [replyPosition, setReplyPosition] = useState({ top: 0, left: 0 });
   const loggedUser = JSON.parse(localStorage.getItem("user:detail"));
   const [user, setUser] = useState(
     JSON.parse(localStorage.getItem("user:detail"))
   );
   const [userInConversation, setUserInConversation] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [users, setUsers] = useState([]);
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [onConversation, setOnConversation] = useState(false);
@@ -38,6 +42,7 @@ const Dashboard = () => {
   const [expandedMessages, setExpandedMessages] = useState([]);
   const [isReply, setIsReply] = useState(false);
   const [isForward, setIsForward] = useState(false);
+  const [popUpForm, setPopUpForm] = useState(false);
   const [replyData, setReplyData] = useState({
     senderId: {
       nama: "",
@@ -46,12 +51,15 @@ const Dashboard = () => {
     message: "",
     messageId: "",
   });
+  const [menuClick, setMenuClick] = useState(false);
+  const [imgClick, setImageClick] = useState(false);
   const [groupData, setGroupData] = useState({
     name: "",
     members: "",
     admin: "",
     conversationId: "",
   });
+  const [createGroupData, setCreateGroupData] = useState({});
   useEffect(() => {
     // Update ref when state changes
     currentConversationIdRef.current = currentConversationId;
@@ -87,7 +95,6 @@ const Dashboard = () => {
     // console.log("Posisi Y relatif:", relativeY);
     // Lakukan operasi lain sesuai kebutuhan Anda
   };
-
   const conversationIdsSet = new Set(
     conversations.map((conversation) => conversation.conversationId)
   );
@@ -187,23 +194,67 @@ const Dashboard = () => {
       });
 
       socket.on("getConversations", (data) => {
-        if (!conversationIdsSet.has(data.conversationId)) {
-          // Tambahkan percakapan hanya jika ID percakapan belum ada
-          setConversations((prev) => {
-            // Cek apakah percakapan sudah ada dalam state
-            const existingConversation = prev.find(
-              (conv) => conv.conversationId === data.conversationId
-            );
+        if (Array.isArray(data.conversationId)) {
+          data.conversationId.forEach((id) => {
+            if (!conversationIdsSet.has(id)) {
+              setConversations((prev) => {
+                const existingConversation = prev?.find(
+                  (conv) => conv.conversationId === id
+                );
+                const imgChange = prev?.find(
+                  (conv) =>
+                    conv?.user !== undefined &&
+                    conv?.user?.img === data?.user?.img
+                );
 
-            if (existingConversation) {
-              // Jika sudah ada, kembalikan state tanpa perubahan
-              return prev;
+                if (existingConversation && imgChange) {
+                  return prev;
+                } else if (!imgChange) {
+                  const updatedPrev = prev?.map((conv) => {
+                    if (conv.user && conv.user.id === data.user.id) {
+                      return {
+                        ...conv,
+                        user: { ...conv.user, img: data.user.img },
+                      };
+                    } else {
+                      return conv;
+                    }
+                  });
+
+                  return updatedPrev;
+                } else {
+                  conversationIdsSet.add(data.conversationId);
+                  return prev;
+                }
+              });
             }
-
-            // Jika belum ada, tambahkan percakapan baru
-            conversationIdsSet.add(data.conversationId); // Tambahkan ID ke Set
-            return [...prev, data];
           });
+        } else {
+          if (!conversationIdsSet.has(data.conversationId)) {
+            setConversations((prev) => {
+              const existingConversation = prev.find(
+                (conv) => conv.conversationId === data.conversationId
+              );
+              const imgChange = prev.find((conv) => conv.img === data.img);
+              if (prev.length === 0) {
+                conversationIdsSet.add(data.conversationId);
+                return [...prev, data];
+              } else if (existingConversation && imgChange) {
+                return prev;
+              } else if (!imgChange) {
+                const updatedPrev = prev.map((conv) => {
+                  if (conv.conversationId === data.conversationId) {
+                    return { ...conv, img: data.img };
+                  }
+                  return conv;
+                });
+                return updatedPrev;
+              } else {
+                conversationIdsSet.add(data.conversationId);
+                return [...prev, data];
+              }
+            });
+          }
         }
       });
       socket.on("getLastMessage", (data) => {
@@ -222,11 +273,11 @@ const Dashboard = () => {
     messageRef?.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages?.[messages.length - 1]?.message || messages?.message]);
 
-  useEffect(() => {
-    if (messageIdRef.current) {
-      messageIdRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages?.[messages.length - 1]?.message || messages?.message]);
+  // useEffect(() => {
+  //   if (messageIdRef.current) {
+  //     messageIdRef.current.scrollIntoView({ behavior: "smooth" });
+  //   }
+  // }, [messages?.[messages.length - 1]?.message || messages?.message]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -351,6 +402,7 @@ const Dashboard = () => {
       console.error("Invalid userId format");
       return;
     }
+    console.log("inidsf", message);
 
     if (forward) {
       fetchMessages(
@@ -365,6 +417,7 @@ const Dashboard = () => {
       fetchMessages(
         targetConversation ? targetConversation.conversationId : "new",
         userId,
+        message,
         targetConversation ? targetConversation.type : "individual",
         targetConversation ? targetConversation.name : ""
       );
@@ -374,10 +427,10 @@ const Dashboard = () => {
   const fetchMessages = async (
     conversationId,
     user,
+    message,
     type,
     name,
     admin,
-    message,
     forward
   ) => {
     try {
@@ -396,6 +449,12 @@ const Dashboard = () => {
 
         url = ` http://127.0.0.1:8000/api/messages/${conversationId}?senderId=${loggedUser.id}&type=${type}`;
       } else {
+        setGroupData({
+          name: "",
+          members: "",
+          admin: "",
+          conversationId: "",
+        });
         url = ` http://127.0.0.1:8000/api/messages/${conversationId}?receiverId=${user.id}&senderId=${loggedUser.id}&type=${type}`;
       }
       const res = await fetch(url, {
@@ -490,6 +549,43 @@ const Dashboard = () => {
       }
       setUserInConversation(true);
       setOnConversation(true);
+      setImageClick(false);
+      setTimeout(() => {
+        // Mendapatkan semua elemen pesan yang memiliki background color merah
+        const redMessageElements = document.querySelectorAll(
+          "[style='background-color: red;']"
+        );
+        // Menghapus background color merah dari semua elemen pesan yang memiliki background color merah
+        redMessageElements.forEach((element) => {
+          element.style.backgroundColor = "";
+        });
+
+        // Mendapatkan elemen dengan ID tertentu
+        const containerElement = document.getElementById(message.messageId);
+        console.log(containerElement);
+        // Mendapatkan elemen <p> kedua di dalam elemen tersebut
+        const paragraphs = containerElement.querySelectorAll("p");
+
+        // Mencari elemen <p> yang berisi teks yang sesuai dengan message.message
+        let secondParagraph = null;
+        paragraphs.forEach((paragraph) => {
+          if (paragraph.textContent.includes(message.message)) {
+            secondParagraph = paragraph;
+            return; // Keluar dari loop forEach setelah menemukan elemen yang sesuai
+          }
+        });
+
+        // Jika elemen ditemukan, atur background color-nya menjadi merah
+        if (secondParagraph) {
+          secondParagraph.style.backgroundColor = "red";
+          containerElement.scrollIntoView({
+            behavior: "smooth",
+            block: "nearest",
+          });
+        }
+      }, 100);
+
+      // setSearchValue("");
     } catch (error) {
       console.error("Error fetching messages:", error);
       // Handle the error or set messages to an empty array
@@ -620,6 +716,63 @@ const Dashboard = () => {
       console.log("erro in sendMessage", error);
     }
   };
+
+  const updateImg = async (id, formData) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/imgUpdate/${id}`, {
+        method: "PATCH",
+        body: formData, // Menggunakan FormData sebagai body request
+      });
+
+      // Periksa apakah respons berhasil
+      if (!res.ok) {
+        throw new Error("Failed to update image");
+      }
+
+      // Handle respons atau kembalikan sesuai kebutuhan
+      const resData = await res.json();
+      const currentDate = new Date();
+      setPopUpForm(false);
+      socket.emit(
+        "sendConversations",
+        Array.isArray(resData.data.conversationId)
+          ? {
+              conversationId: resData.data.conversationId,
+              senderId: resData.data.user.id,
+              receiverId: resData.data.receiverId,
+              message: resData.data.messages,
+              date: currentDate.toISOString(),
+              type: resData.data.type,
+              name: "",
+              img: resData.data.user.img,
+              userId: resData.data.user,
+            }
+          : {
+              conversationId: resData.data.conversationId,
+              senderId: resData.data.admin,
+              receiverId: resData.data.members,
+              message:
+                messages && messages.length
+                  ? messages[messages.length - 1]
+                  : null,
+              date:
+                messages && messages.length
+                  ? messages[messages.length - 1].date
+                  : currentDate.toISOString(),
+              admin: resData.data.admin,
+              type: resData.data.type,
+              name: resData.data.name,
+              img: resData.data.img,
+            }
+      );
+      return resData;
+    } catch (error) {
+      console.error("Error updating image:", error);
+      // Handle error sesuai kebutuhan, misalnya dengan menampilkan pesan error kepada pengguna
+      throw error;
+    }
+  };
+
   useEffect(() => {
     return () => {
       setConversations([]);
@@ -775,6 +928,11 @@ const Dashboard = () => {
     const color = "#" + r.toString(16) + g.toString(16) + b.toString(16);
     return color;
   };
+
+  const popUpFrom = (value) => {
+    setPopUpForm(value);
+  };
+
   return (
     <div className="w-screen flex">
       <div
@@ -782,17 +940,68 @@ const Dashboard = () => {
           userInConversation && window.innerWidth < 1024 ? "hidden" : "w-[100%]"
         } lg:w-[25%] h-screen bg-secondary overflow-scroll border-r-[1px] border-[#e1dfda]`}
       >
-        <div className="flex items-center pt-4 pb-2 ">
-          <div className="ml-6">
+        {popUpForm && (
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full flex justify-center">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault(); // Menghentikan perilaku bawaan pengiriman formulir
+
+                // Membuat objek FormData
+                const formData = new FormData();
+                formData.append("img", e.target.imgUpload.files[0]); // Mengambil file dari input file
+
+                // Panggil fungsi updateImg dengan formData sebagai argumen
+                updateImg(
+                  groupData.conversationId
+                    ? groupData.conversationId
+                    : loggedUser.id,
+                  formData
+                );
+              }}
+            >
+              <div className="mb-6 w-[75%]">
+                <label
+                  htmlFor="imgUpload"
+                  className="block mb-2 text-sm font-medium text-gray-700"
+                >
+                  Upload Image
+                </label>
+                <input
+                  type="file"
+                  id="imgUpload"
+                  name="imgUpload" // Tambahkan name agar dapat diakses dalam FormData
+                  className="border border-gray-300 rounded p-2 w-full"
+                  accept="image/*" // Hanya menerima file gambar
+                />
+              </div>
+              <button
+                type="submit"
+                className={`text-white bg-primary hover:bg-primary focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm w-[75%] px-5 py-2.5 text-center `}
+              >
+                Send
+              </button>
+            </form>
+          </div>
+        )}
+        <div className="flex items-center flex-row pt-4 pb-2 ">
+          <div className="mx-6 flex items-center w-full justify-between relative">
             <h3 className="text-2xl font-semibold">Chats</h3>
+            {/* <MenuButton onClick={() => setMenuClick(true)} />
+            <MenuProfile
+              className={"absolute top-10 right-0 z-[10]"}
+              popUpForm={popUpFrom}
+            /> */}
           </div>
         </div>
+
         <div className="flex items-center justify-center flex-col">
           <Search
             className="w-[100%] px-6 pt-2 pb-4"
             placeholder="Search or start a new chat"
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
+            searchValue={searchValue}
+            setSearchValue={setSearchValue}
           />
           {/* <div className="w-[80%] p-3 bg-red-400 rounded-lg">
             <div className="flex items-center justify-between px-3 py-2 hover:bg-[#606060] hover:text-white hover:rounded-md cursor-pointer transition duration-100">
@@ -815,10 +1024,7 @@ const Dashboard = () => {
                   ({ message, user, conversationName }, index) => {
                     // Ensure messageId exists and is not null
                     const messageId = message.messageId || `message_${index}`; // Fallback to an index-based ID if messageId is not available
-                    if (!messageIdRef.current) {
-                      messageIdRef.current = {}; // Initialize if not already initialized
-                    }
-                    messageIdRef.current[index] = messageId;
+
                     const messageDate = new Date(message.date);
                     const today = new Date();
                     const isToday =
@@ -851,19 +1057,13 @@ const Dashboard = () => {
 
                     return (
                       <div
-                        ref={(ref) => {
-                          if (index === filteredMessages.length - 1) {
-                            // Assign the ref of the last message
-                            messageIdRef.current = ref;
-                          }
-                        }}
-                        className={`${messageId} overflow-hidden bg-[#e6e6e6] mt-2 rounded-md h-16 items-center py-2 hover:bg-[#e6e6e6] hover:rounded-md p-2 cursor-pointer border-black transition duration-100 `}
+                        className={`${message.messageId} overflow-hidden bg-[#e6e6e6] mt-2 rounded-md h-16 items-center py-2 hover:bg-[#e6e6e6] hover:rounded-md p-2 cursor-pointer border-black transition duration-100 `}
                         key={index}
+                        onClick={() => {
+                          handleNewOrNoConcersation(user, message);
+                        }}
                       >
-                        <div
-                          className="flex flex-row justify-between"
-                          onClick={() => handleNewOrNoConcersation(user)}
-                        >
+                        <div className="flex flex-row justify-between">
                           {conversationName ? "" : ""}
                           <p className="font-semibold truncate text-wrap overflow-hidden">
                             {user?.fullName || user?.email || conversationName}
@@ -921,6 +1121,7 @@ const Dashboard = () => {
                         fetchMessages(
                           conversation.conversationId,
                           conversation.user || conversation.members,
+                          "",
                           conversation.type,
                           conversation.name,
                           conversation.admin
@@ -1008,6 +1209,7 @@ const Dashboard = () => {
                               ""
                             )}
                           </div>
+
                           {lastMessages &&
                           lastMessages.conversationId ===
                             conversation.conversationId ? (
@@ -1023,11 +1225,11 @@ const Dashboard = () => {
                                   minHeight: "1em",
                                 }}
                               >
-                                {
-                                  conversation?.messages[
-                                    conversation?.messages?.length - 1
-                                  ]?.message
-                                }
+                                {lastMessages &&
+                                lastMessages.conversationId ===
+                                  conversation.conversationId
+                                  ? lastMessages.message
+                                  : ""}
                               </p>
                             </div>
                           ) : (
@@ -1093,26 +1295,51 @@ const Dashboard = () => {
               fill="none"
               strokeLinecap="round"
               strokeLinejoin="round"
-              onClick={() => setUserInConversation((prevValue) => !prevValue)}
+              onClick={() =>
+                setUserInConversation(
+                  (prevValue) => !prevValue,
+                  setImageClick(!imgClick)
+                )
+              }
             >
               <path stroke="none" d="M0 0h24v24H0z" fill="none" />
               <path d="M5 12l14 0" />
               <path d="M5 12l6 6" />
               <path d="M5 12l6 -6" />
             </svg>
-
-            <img
-              src={`http://127.0.0.1:8000/${
-                messages?.receiver?.img ||
-                conversations.find(
-                  (conversation) =>
-                    conversation.conversationId === currentConversationId
-                )?.img ||
-                "default.jpg" // Ganti 'default.jpg' dengan nama file gambar default jika tidak ditemukan
-              }`}
-              className="w-12 h-12 rounded-full border border-primary flex-shrink-0"
-              alt="Profile"
-            />
+            <div className="relative">
+              <img
+                src={`http://127.0.0.1:8000/${
+                  messages?.receiver?.img ||
+                  conversations.find(
+                    (conversation) =>
+                      conversation.conversationId === currentConversationId
+                  )?.img ||
+                  "default.jpg" // Ganti 'default.jpg' dengan nama file gambar default jika tidak ditemukan
+                }`}
+                className={`w-12 h-12 relative rounded-full border border-primary flex-shrink-0 cursor-pointer
+                }`}
+                alt="Profile"
+                onClick={() => setImageClick(!imgClick)}
+              />
+              {/* <ViewProfileGroub /> */}
+              <div
+                className={`transition-all duration-300 ${
+                  imgClick ? "top-14" : "top-0"
+                } absolute left-0`}
+              >
+                {groupData && imgClick && (
+                  <ViewProfileGroub
+                    conversations={conversations}
+                    currentConversationId={currentConversationId}
+                    users={users}
+                    loggedId={user}
+                    groupData={groupData}
+                    fetchMessages={fetchMessages}
+                  />
+                )}
+              </div>
+            </div>
 
             {messages?.receiver ? (
               <div className="ml-4 mr-auto">
@@ -1127,21 +1354,22 @@ const Dashboard = () => {
               <div className="ml-4 mr-auto">
                 <h3 className="text-lg font-medium">{groupData.name}</h3>
                 <p className="text-sm font-thin text-gray-600">
-                  {groupData.members
-                    .map((memberId) => {
-                      const userGroup = users.find(
-                        (user) => user.user.id === memberId
-                      );
-                      const admin = user.id === memberId;
-                      if (admin) {
-                        return "You";
-                      } else if (userGroup) {
-                        return userGroup.user.fullName;
-                      } else {
-                        return memberId;
-                      }
-                    })
-                    .join(", ")}
+                  {Array.isArray(groupData.members) &&
+                    groupData?.members
+                      ?.map((memberId) => {
+                        const userGroup = users.find(
+                          (user) => user.user.id === memberId
+                        );
+                        const admin = user.id === memberId;
+                        if (admin) {
+                          return "You";
+                        } else if (userGroup) {
+                          return userGroup.user.fullName;
+                        } else {
+                          return memberId;
+                        }
+                      })
+                      .join(", ")}
                 </p>
               </div>
             )}
@@ -1208,6 +1436,9 @@ const Dashboard = () => {
                             senderId
                               ? "bg-[#1d3630] rounded-tl-xl text-[#f7f4ee]"
                               : "bg-secondary rounded-tr-xl text-[#06140e]"
+                          }`}
+                          id={`${
+                            messageObj.message.messageId || messageObj.messageId
                           }`}
                         >
                           {(messageObj.message.isForward ||
@@ -1280,7 +1511,7 @@ const Dashboard = () => {
                           )}
 
                           <p
-                            className={`text-sm ${
+                            className={`text-sm rounded-md px-1  ${
                               messageObj.message.isReply || messageObj.isReply
                                 ? "mt-2"
                                 : "mt-0"

@@ -22,6 +22,11 @@ const conversationSchema = new mongoose.Schema({
       return this.type === "group";
     },
   },
+  description: { type: String, default: "" },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
   admin: {
     type: mongoose.Schema.Types.ObjectId,
     required: function () {

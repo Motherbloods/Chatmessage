@@ -11,7 +11,6 @@ const NewChatButton = ({ users, userLogin, socket }) => {
   const handleSquareRoundedClick = () => {
     setIconsVisible(!isIconsVisible);
   };
-
   const handleUsersGroupClick = () => {
     setIconsVisible(false);
     setGrubListVisible(!isGrubListVisible);

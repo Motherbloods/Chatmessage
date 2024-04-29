@@ -10,6 +10,8 @@ export default function Search({
   placeholder = "",
   value = "",
   onChange = () => {},
+  searchValue,
+  setSearchValue,
 }) {
   return (
     <div className={` ${className}`}>
@@ -45,6 +47,27 @@ export default function Search({
           <path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
           <path d="M21 21l-6 -6" />
         </svg>
+        {searchValue && (
+          <div>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="icon icon-tabler icon-tabler-x absolute right-3 top-1/2 transform -translate-y-1/2"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              strokeWidth="1.5"
+              stroke="#2c3e50"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              onClick={() => setSearchValue("")}
+            >
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path d="M18 6l-12 12" />
+              <path d="M6 6l12 12" />
+            </svg>
+          </div>
+        )}
       </div>
     </div>
   );
