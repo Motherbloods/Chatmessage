@@ -29,6 +29,7 @@ const Dashboard = () => {
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [onConversation, setOnConversation] = useState(false);
   const [lastMessages, setLastMessages] = useState([]);
+
   const [conversations, setConversations] = useState([]);
   const [messages, setMessages] = useState({ message: [] });
   const [message, setMessage] = useState([]);
@@ -80,20 +81,6 @@ const Dashboard = () => {
     // Mendapatkan posisi klik menggunakan event object
     const { clientX, clientY } = event;
     setReplyPosition({ top: clientY, left: clientX });
-
-    // // Mengambil elemen target (dalam kasus ini, emoticon yang diklik)
-    // const targetElement = event.target;
-
-    // // Menggunakan getBoundingClientRect() untuk mendapatkan posisi relatif terhadap viewport
-    // const boundingRect = targetElement.getBoundingClientRect();
-
-    // // Menghitung posisi relatif terhadap parent element (dalam hal ini, container div)
-    // const relativeX = clientX - boundingRect.left;
-    // const relativeY = clientY - boundingRect.top;
-
-    // console.log("Posisi X relatif:", relativeX);
-    // console.log("Posisi Y relatif:", relativeY);
-    // Lakukan operasi lain sesuai kebutuhan Anda
   };
   const conversationIdsSet = new Set(
     conversations.map((conversation) => conversation.conversationId)
@@ -102,12 +89,15 @@ const Dashboard = () => {
     if (socket && user?.id) {
       socket.emit("addUser", user.id);
       socket.on("getUsers", (users) => {});
-
       socket.on("getMessage", (data) => {
         const isGroupConversation = Array.isArray(data.message.receiverId);
         const conversationId =
           data.conversationId || data.message.conversationId;
-        if (isGroupConversation && conversationId) {
+        if (
+          isGroupConversation &&
+          conversationId &&
+          data.type !== "individual"
+        ) {
           if (currentConversationIdRef.current === conversationId) {
             // Jika receiverId adalah array
             setMessages((prevMessages) => {
@@ -124,6 +114,7 @@ const Dashboard = () => {
                   isForward: data.message.isForward,
                   loggedUserId: data.message.loggedUserId,
                   conversationId: data.message.conversationId,
+                  read: data.message.read,
                   // tambahkan properti lainnya yang diperlukan
                 },
                 name: data.name,
@@ -147,20 +138,19 @@ const Dashboard = () => {
             });
           }
         } else {
-          const conversationIdObject = { conversationId: data.conversationId };
-          if (
-            currentConversationIdRef.current &&
-            (typeof currentConversationIdRef.current === "object"
-              ? data.conversationId ===
-                currentConversationIdRef.current.conversationId
-              : data.conversationId === currentConversationIdRef.current)
-          ) {
-            if (!Array.isArray(data.message.receiverId || data.receiverId)) {
+          if (data.conversationId) {
+            if (
+              !Array.isArray(
+                (data.message.receiverId || data.receiverId) &&
+                  data.type === "individual"
+              )
+            ) {
               setMessages((prev) => {
                 const messagesArray = prev.message || [];
                 const updatedMessages = [
                   ...messagesArray,
                   {
+                    conversationId: data.conversationId,
                     id: data.id,
                     message: data.message,
                     date: data.date,
@@ -168,19 +158,35 @@ const Dashboard = () => {
                     messageOnReply: data.messageOnReply,
                     senderOnReply: data.senderOnReply,
                     isForward: data.isForward,
+                    read: data.read, // Menambahkan properti read dengan nilai false untuk pesan baru
                   },
                 ];
+
                 setConversations((prevConversations) => {
                   // Find the conversation that needs to be updated
                   return prevConversations.map((conversation) =>
                     conversation.conversationId === data.conversationId
                       ? {
                           ...conversation,
-                          messages: updatedMessages,
+                          messages: [
+                            ...conversation.messages,
+                            {
+                              conversationId: data.conversationId,
+                              id: data.id,
+                              message: data.message,
+                              date: data.date,
+                              isReply: data.isReply,
+                              messageOnReply: data.messageOnReply,
+                              senderOnReply: data.senderOnReply,
+                              isForward: data.isForward,
+                              read: data.read, // Menambahkan properti read dengan nilai false untuk pesan baru
+                            },
+                          ],
                         }
                       : conversation
                   );
                 });
+
                 return {
                   ...prev,
                   message: updatedMessages,
@@ -194,6 +200,7 @@ const Dashboard = () => {
       });
 
       socket.on("getConversations", (data) => {
+        console.log(data);
         if (Array.isArray(data.conversationId)) {
           data.conversationId.forEach((id) => {
             if (!conversationIdsSet.has(id)) {
@@ -259,7 +266,76 @@ const Dashboard = () => {
       });
       socket.on("getLastMessage", (data) => {
         const { lastMessage } = data;
-        setLastMessages(lastMessage);
+        setMessages((prevMessages) => {
+          if (
+            lastMessage &&
+            prevMessages.conversationId ===
+              lastMessage[lastMessage?.length - 1].conversationId
+          ) {
+            const updatedMessages = [...prevMessages.message];
+            const newMessages = lastMessage.filter(
+              (msg) =>
+                !prevMessages.message.some(
+                  (existingMsg) => existingMsg._id === msg._id
+                )
+            );
+            const newMessagesCount = newMessages.length;
+            for (
+              let i = updatedMessages.length - newMessagesCount;
+              i < updatedMessages.length;
+              i++
+            ) {
+              updatedMessages[i] = {
+                ...updatedMessages[i],
+                read: lastMessage[lastMessage.length - 1].read,
+              };
+            }
+            console.log(newMessagesCount);
+
+            return {
+              ...prevMessages,
+              message: updatedMessages,
+            };
+          } else {
+            return prevMessages;
+          }
+        });
+        setConversations((prevConversations) => {
+          return prevConversations.map((conversation) => {
+            if (
+              conversation.conversationId ===
+              lastMessage[lastMessage?.length - 1].conversationId
+            ) {
+              const updatedMessages = [...conversation.messages];
+              const newMessagesCount = lastMessage.filter(
+                (msg) =>
+                  !conversation.messages.some(
+                    (existingMsg) => existingMsg._id === msg._id
+                  )
+              ).length;
+
+              for (
+                let i = updatedMessages.length - newMessagesCount;
+                i < updatedMessages.length;
+                i++
+              ) {
+                if (updatedMessages[i]) {
+                  updatedMessages[i].read =
+                    lastMessage[lastMessage.length - 1].read;
+                }
+              }
+
+              return {
+                ...conversation,
+                messages: updatedMessages,
+              };
+            } else {
+              return conversation;
+            }
+          });
+        });
+
+        setLastMessages(lastMessage ? lastMessage[lastMessage.length - 1] : "");
       });
 
       // Membersihkan event listener pada unmount komponen
@@ -268,17 +344,14 @@ const Dashboard = () => {
       };
     }
   }, [socket, user.id, messages?.message?.id]);
-
   useEffect(() => {
     messageRef?.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages?.[messages.length - 1]?.message || messages?.message]);
-
   // useEffect(() => {
   //   if (messageIdRef.current) {
   //     messageIdRef.current.scrollIntoView({ behavior: "smooth" });
   //   }
   // }, [messages?.[messages.length - 1]?.message || messages?.message]);
-
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -311,6 +384,7 @@ const Dashboard = () => {
           }
         );
         const resData = await res.json();
+
         resData.conversationsData.forEach((conversation) => {
           socket.emit("sendActiveUser", {
             aktif: false,
@@ -325,7 +399,8 @@ const Dashboard = () => {
 
             setLastMessages(lastMessage);
 
-            const { conversationId, messages } = conversation;
+            const { conversationId, messages, user, type } = conversation;
+
             // Assuming socket is already defined
             if (socket) {
               socket.emit("sendLastMessages", {
@@ -343,7 +418,6 @@ const Dashboard = () => {
             setLastMessages([]);
           }
         });
-
         if (Array.isArray(resData.conversationsData)) {
           setConversations(resData.conversationsData);
         } else {
@@ -402,7 +476,6 @@ const Dashboard = () => {
       console.error("Invalid userId format");
       return;
     }
-    console.log("inidsf", message);
 
     if (forward) {
       fetchMessages(
@@ -423,7 +496,6 @@ const Dashboard = () => {
       );
     }
   };
-
   const fetchMessages = async (
     conversationId,
     user,
@@ -476,16 +548,13 @@ const Dashboard = () => {
           const lastMessage = messagesData[messagesData.length - 1];
 
           const messageId = lastMessage.messageId;
-          setLastMessages(lastMessage);
-          // if (lastMessage.id === loggedUser.id) {
-          // Jika id pengirim (sender) sama dengan loggeduser.id
+
           socket.emit("sendLastMessages", {
             loggedUserId: loggedUser.id,
             messageId,
-            date: messages.date,
-            read: messages.read,
             receiverId: messages.receiverId,
             conversationId: newConversationId,
+            read: true,
             lastMessages: [lastMessage],
           });
         } else {
@@ -522,8 +591,19 @@ const Dashboard = () => {
             messageId,
             receiverId: messages.receiverId,
             conversationId,
+            read: true,
             lastMessages: [lastMessage],
           });
+          if (type === "individual") {
+            setMessages({
+              message: resData.messagesData,
+              receiver: user,
+              conversationId,
+            });
+          } else {
+            setMessages(resData.messagesData);
+          }
+
           socket.emit("sendActiveUser", {
             aktif: true,
             loggedUser: loggedUser.id,
@@ -532,15 +612,6 @@ const Dashboard = () => {
         } else {
           // Handle the case where resData.messagesData is undefined or null
           console.error("Error: messagesData is undefined or null");
-        }
-        if (type === "individual") {
-          setMessages({
-            message: resData.messagesData,
-            receiver: user,
-            conversationId,
-          });
-        } else {
-          setMessages(resData.messagesData);
         }
         setCurrentConversationId(conversationId);
         if (forward && message) {
@@ -552,9 +623,9 @@ const Dashboard = () => {
       setImageClick(false);
       setTimeout(() => {
         // Mendapatkan semua elemen pesan yang memiliki background color merah
-        const redMessageElements = document.querySelectorAll(
-          "[style='background-color: red;']"
-        );
+        const redMessageElements =
+          document?.querySelectorAll("[style='background-color: red;']") || [];
+
         // Menghapus background color merah dari semua elemen pesan yang memiliki background color merah
         redMessageElements.forEach((element) => {
           element.style.backgroundColor = "";
@@ -562,26 +633,29 @@ const Dashboard = () => {
 
         // Mendapatkan elemen dengan ID tertentu
         const containerElement = document.getElementById(message.messageId);
-        console.log(containerElement);
-        // Mendapatkan elemen <p> kedua di dalam elemen tersebut
-        const paragraphs = containerElement.querySelectorAll("p");
 
-        // Mencari elemen <p> yang berisi teks yang sesuai dengan message.message
-        let secondParagraph = null;
-        paragraphs.forEach((paragraph) => {
-          if (paragraph.textContent.includes(message.message)) {
-            secondParagraph = paragraph;
-            return; // Keluar dari loop forEach setelah menemukan elemen yang sesuai
-          }
-        });
+        // Jika containerElement ditemukan, lanjutkan proses
+        if (containerElement) {
+          // Mendapatkan elemen <p> kedua di dalam elemen tersebut
+          const paragraphs = containerElement.querySelectorAll("p");
 
-        // Jika elemen ditemukan, atur background color-nya menjadi merah
-        if (secondParagraph) {
-          secondParagraph.style.backgroundColor = "red";
-          containerElement.scrollIntoView({
-            behavior: "smooth",
-            block: "nearest",
+          // Mencari elemen <p> yang berisi teks yang sesuai dengan message.message
+          let secondParagraph = null;
+          paragraphs.forEach((paragraph) => {
+            if (paragraph.textContent.includes(message.message)) {
+              secondParagraph = paragraph;
+              return; // Keluar dari loop forEach setelah menemukan elemen yang sesuai
+            }
           });
+
+          // Jika elemen ditemukan, atur background color-nya menjadi merah
+          if (secondParagraph) {
+            secondParagraph.style.backgroundColor = "red";
+            containerElement.scrollIntoView({
+              behavior: "smooth",
+              block: "nearest",
+            });
+          }
         }
       }, 100);
 
@@ -687,9 +761,11 @@ const Dashboard = () => {
           admin: members ? groupData.admin : "",
           type: members ? "group" : "individual",
           name: members ? groupData.name : "",
+          read: false,
         });
         socket.emit("sendLastMessages", {
           conversationId,
+          loggedUserId: loggedUser.id,
           lastMessages: [
             message || messages?.message,
             {
@@ -712,9 +788,7 @@ const Dashboard = () => {
       setIsReply(false);
       setIsForward(false);
       setSearchValue("");
-    } catch (error) {
-      console.log("erro in sendMessage", error);
-    }
+    } catch (error) {}
   };
 
   const updateImg = async (id, formData) => {
@@ -1095,9 +1169,11 @@ const Dashboard = () => {
                       conversation.messages.length > 0) ||
                     conversation.type === "group"
                 )
+
                 .sort((a, b) => {
                   const lastMessageA = a.messages[a.messages.length - 1];
                   const lastMessageB = b.messages[b.messages.length - 1];
+
                   const dateA = lastMessageA
                     ? new Date(lastMessageA.date)
                     : new Date(a.date);
@@ -1106,162 +1182,179 @@ const Dashboard = () => {
                     : new Date(b.date);
                   return dateB - dateA;
                 })
-                .map((conversation, index) => (
-                  <div
-                    key={conversation.conversationId}
-                    className={`py-2 hover:bg-[#e6e6e6] hover:rounded-md p-2 cursor-pointer mb-2 transition duration-100 ${
-                      conversation.conversationId === currentConversationId
-                        ? "bg-[#e6e6e6] rounded-md"
-                        : "bg-secondary rounded-md"
-                    } overflow-hidden`}
-                  >
+                .map((conversation, index) => {
+                  const lastMessage = conversation.messages
+                    ? conversation.messages[conversation.messages.length - 1]
+                    : null;
+                  const isRead = lastMessage ? lastMessage.read : false;
+
+                  const rillLastMessages = conversations.reduce(
+                    (acc, conversation) => {
+                      // Mendapatkan pesan terakhir dari setiap percakapan
+                      const lastMessage = conversation.messages
+                        ? conversation.messages[
+                            conversation.messages.length - 1
+                          ]
+                        : null;
+
+                      if (lastMessage) {
+                        // Menyimpan pesan terakhir ke dalam objek dengan kunci conversationId
+                        acc[conversation.conversationId] = lastMessage.message;
+                      }
+
+                      return acc;
+                    },
+                    {}
+                  );
+
+                  return (
                     <div
-                      className="cursor-pointer flex items-center"
-                      onClick={() => {
-                        fetchMessages(
-                          conversation.conversationId,
-                          conversation.user || conversation.members,
-                          "",
-                          conversation.type,
-                          conversation.name,
-                          conversation.admin
-                        );
-                        setCurrentConversationId(conversation.conversationId);
-                      }}
+                      key={conversation.conversationId}
+                      className={`py-2 hover:bg-[#e6e6e6] hover:rounded-md p-2 cursor-pointer mb-2 transition duration-100 ${
+                        conversation.conversationId === currentConversationId
+                          ? "bg-[#e6e6e6] rounded-md"
+                          : "bg-secondary rounded-md"
+                      } overflow-hidden`}
                     >
-                      <img
-                        src={`http://127.0.0.1:8000/${
-                          conversation.user?.img || conversation?.img
-                        }`}
-                        className="w-12 h-12 rounded-full border border-primary flex-shrink-0"
-                        alt="Profile"
-                      />
-                      <div className="ml-6 overflow-hidden flex-grow">
-                        <div className="flex flex-row justify-between items-center">
-                          <h3 className="text-lg font-semibold">
-                            {conversation.user?.fullName ||
-                              conversation.name ||
-                              conversation.conversationId}
-                          </h3>
-                          <div
-                            key={conversation.conversationId}
-                            className="justify-end"
-                          >
-                            <p className="font-thin font-lg">
-                              {formatTime(
-                                conversation.messages[
-                                  conversation.messages.length - 1
-                                ]?.date || conversation.date
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-start ">
-                          <div className="flex-shrink-0 mr-1">
-                            {conversation.messages &&
-                            conversation.messages.length > 0 ? (
-                              lastMessages.read ? (
-                                // Display the second icon when read is true
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  className="icon icon-tabler icon-tabler-checks mt-[6.5px]"
-                                  width="15"
-                                  height="15"
-                                  viewBox="0 0 24 24"
-                                  strokeWidth="1.5"
-                                  stroke="#2c3e50"
-                                  fill="none"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <path
-                                    stroke="none"
-                                    d="M0 0h24v24H0z"
-                                    fill="none"
-                                  />
-
-                                  <path d="M7 12l5 5l10 -10" />
-                                  <path d="M2 12l5 5m5 -5l5 -5" />
-                                </svg>
-                              ) : (
-                                // Display the first icon when read is false
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  className="icon icon-tabler icon-tabler-check mt-[6.5px]"
-                                  width="15"
-                                  height="15"
-                                  viewBox="0 0 24 24"
-                                  strokeWidth="1.5"
-                                  stroke="currentColor"
-                                  fill="none"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <path
-                                    stroke="none"
-                                    d="M0 0h24v24H0z"
-                                    fill="none"
-                                  />
-                                  <path d="M5 12l5 5l10 -10" />
-                                </svg>
-                              )
-                            ) : (
-                              ""
-                            )}
-                          </div>
-
-                          {lastMessages &&
-                          lastMessages.conversationId ===
-                            conversation.conversationId ? (
-                            <div className="overflow-hidden">
-                              <p
-                                className="overflow-hidden"
-                                style={{
-                                  overflowWrap: "break-word",
-                                  overflow: "hidden",
-                                  display: "-webkit-box",
-                                  WebkitBoxOrient: "vertical",
-                                  WebkitLineClamp: 1,
-                                  minHeight: "1em",
-                                }}
-                              >
-                                {lastMessages &&
-                                lastMessages.conversationId ===
-                                  conversation.conversationId
-                                  ? lastMessages.message
-                                  : ""}
+                      <div
+                        className="cursor-pointer flex items-center"
+                        onClick={() => {
+                          fetchMessages(
+                            conversation.conversationId,
+                            conversation.user || conversation.members,
+                            "",
+                            conversation.type,
+                            conversation.name,
+                            conversation.admin
+                          );
+                          setCurrentConversationId(conversation.conversationId);
+                        }}
+                      >
+                        <img
+                          src={`http://127.0.0.1:8000/${
+                            conversation.user?.img || conversation?.img
+                          }`}
+                          className="w-12 h-12 rounded-full border border-primary flex-shrink-0"
+                          alt="Profile"
+                        />
+                        <div className="ml-6 overflow-hidden flex-grow">
+                          <div className="flex flex-row justify-between items-center">
+                            <h3 className="text-lg font-semibold">
+                              {conversation.user?.fullName ||
+                                conversation.name ||
+                                conversation.conversationId}
+                            </h3>
+                            <div
+                              key={conversation.conversationId}
+                              className="justify-end"
+                            >
+                              <p className="font-thin font-lg">
+                                {formatTime(
+                                  conversation.messages[
+                                    conversation.messages.length - 1
+                                  ]?.date || conversation.date
+                                )}
                               </p>
                             </div>
-                          ) : (
-                            <div className="overflow-hidden">
+                          </div>
+
+                          <div className="flex items-start ">
+                            <div className="flex-shrink-0 mr-1">
                               {conversation.messages &&
-                                Array.isArray(conversation.messages) &&
-                                conversation.messages.length > 0 && (
-                                  <p
-                                    className="overflow-hidden"
-                                    style={{
-                                      overflowWrap: "break-word",
-                                      overflow: "hidden",
-                                      display: "-webkit-box",
-                                      WebkitBoxOrient: "vertical",
-                                      WebkitLineClamp: 1,
-                                      minHeight: "1em",
-                                    }}
+                              conversation.messages.length > 0 ? (
+                                isRead ? (
+                                  // Display the second icon when read is true
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="icon icon-tabler icon-tabler-checks mt-[6.5px]"
+                                    width="15"
+                                    height="15"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth="1.5"
+                                    stroke="#2c3e50"
+                                    fill="none"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
                                   >
-                                    {
-                                      conversation.messages[
-                                        conversation.messages.length - 1
-                                      ]?.message
-                                    }
-                                  </p>
-                                )}
+                                    <path
+                                      stroke="none"
+                                      d="M0 0h24v24H0z"
+                                      fill="none"
+                                    />
+
+                                    <path d="M7 12l5 5l10 -10" />
+                                    <path d="M2 12l5 5m5 -5l5 -5" />
+                                  </svg>
+                                ) : (
+                                  // Display the first icon when read is false
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="icon icon-tabler icon-tabler-check mt-[6.5px]"
+                                    width="15"
+                                    height="15"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth="1.5"
+                                    stroke="currentColor"
+                                    fill="none"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path
+                                      stroke="none"
+                                      d="M0 0h24v24H0z"
+                                      fill="none"
+                                    />
+                                    <path d="M5 12l5 5l10 -10" />
+                                  </svg>
+                                )
+                              ) : (
+                                ""
+                              )}
                             </div>
-                          )}
+                            {lastMessages?.conversationId ===
+                            conversation?.conversationId ? (
+                              <div className="overflow-hidden">
+                                <p
+                                  className="overflow-hidden"
+                                  style={{
+                                    overflowWrap: "break-word",
+                                    overflow: "hidden",
+                                    display: "-webkit-box",
+                                    WebkitBoxOrient: "vertical",
+                                    WebkitLineClamp: 1,
+                                    minHeight: "1em",
+                                  }}
+                                >
+                                  {lastMessage.message}
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="overflow-hidden">
+                                {conversation.messages &&
+                                  Array.isArray(conversation.messages) &&
+                                  conversation.messages.length > 0 && (
+                                    <p
+                                      className="overflow-hidden"
+                                      style={{
+                                        overflowWrap: "break-word",
+                                        overflow: "hidden",
+                                        display: "-webkit-box",
+                                        WebkitBoxOrient: "vertical",
+                                        WebkitLineClamp: 1,
+                                        minHeight: "1em",
+                                      }}
+                                    >
+                                      {lastMessage.message}
+                                    </p>
+                                  )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
             ) : (
               <div className="text-center text-lg font-semibold mt-24">
                 No conversation
@@ -1295,12 +1388,26 @@ const Dashboard = () => {
               fill="none"
               strokeLinecap="round"
               strokeLinejoin="round"
-              onClick={() =>
-                setUserInConversation(
-                  (prevValue) => !prevValue,
-                  setImageClick(!imgClick)
-                )
-              }
+              onClick={() => {
+                setUserInConversation((prevValue) => !prevValue); // Memperbarui nilai userInConversation
+                setImageClick(!imgClick); // Memperbarui nilai imgClick
+                socket.emit("sendActiveUser", {
+                  aktif: false,
+                  loggedUser: loggedUser.id,
+                  conversationId: currentConversationId,
+                });
+
+                conversations.forEach((conversation, index) => {
+                  socket.emit("sendLastMessages", {
+                    loggedUserId: loggedUser.id,
+                    date: message.date,
+                    read: message.read,
+                    conversationId: currentConversationId,
+                    receiverId: messages.receiverId,
+                    lastMessages: conversation.messages,
+                  });
+                });
+              }}
             >
               <path stroke="none" d="M0 0h24v24H0z" fill="none" />
               <path d="M5 12l14 0" />
@@ -1336,6 +1443,8 @@ const Dashboard = () => {
                     loggedId={user}
                     groupData={groupData}
                     fetchMessages={fetchMessages}
+                    socket={socket}
+                    fetchMessagess={fetchMessages}
                   />
                 )}
               </div>
@@ -1411,7 +1520,10 @@ const Dashboard = () => {
                     (messageObj.message?.loggedUserId ?? messageObj.id) ===
                     loggedUser.id;
                   const messageDate = new Date(
-                    messageObj.message.date || messageObj.date
+                    messageObj?.message?.date ||
+                      messageObj?.date ||
+                      messageObj?.createdAt ||
+                      messageObj?.message?.createdAt
                   );
                   const senderIdGroup = users.find(
                     (user) =>
@@ -1423,7 +1535,6 @@ const Dashboard = () => {
                   const formattedMinutes =
                     minutes < 10 ? `0${minutes}` : minutes;
                   const randomColor = getRandomColor();
-
                   return (
                     <div className="static" key={index}>
                       <div
@@ -1550,8 +1661,7 @@ const Dashboard = () => {
                             </span>
                             {senderId && (
                               <div>
-                                {lastMessages.read ? (
-                                  // Display the second icon when read is true
+                                {messageObj.message.read || messageObj.read ? (
                                   <svg
                                     xmlns="http://www.w3.org/2000/svg"
                                     className="icon icon-tabler icon-tabler-checks mt-2"
@@ -1569,12 +1679,10 @@ const Dashboard = () => {
                                       d="M0 0h24v24H0z"
                                       fill="none"
                                     />
-
                                     <path d="M7 12l5 5l10 -10" />
                                     <path d="M2 12l5 5m5 -5l5 -5" />
                                   </svg>
                                 ) : (
-                                  // Display the first icon when read is false
                                   <svg
                                     xmlns="http://www.w3.org/2000/svg"
                                     className="icon icon-tabler icon-tabler-check mt-[6.5px]"
@@ -1595,7 +1703,9 @@ const Dashboard = () => {
                                     <path d="M5 12l5 5l10 -10" />
                                   </svg>
                                 )}
-                                {/* <svg
+                              </div>
+                            )}
+                            {/* <svg
                                     xmlns="http://www.w3.org/2000/svg"
                                     className="icon icon-tabler icon-tabler-checks mt-2"
                                     width="15"
@@ -1616,8 +1726,6 @@ const Dashboard = () => {
                                     <path d="M7 12l5 5l10 -10" />
                                     <path d="M2 12l5 5m5 -5l5 -5" />
                                   </svg> */}
-                              </div>
-                            )}
                           </div>
                         </div>
                         <div className="relative">

@@ -229,6 +229,30 @@ const createGroup = async (req, res) => {
   }
 };
 
+const addMemberOnGroup = async (req, res) => {
+  const idGroup = req.params.id;
+  const newMembers = req.query.newMember;
+  const newMembersString = newMembers.split(",");
+  const conversation = await Conversations.findById(idGroup);
+
+  const conversationMembersString = conversation.members.toString();
+  const conversationMembersArray = conversationMembersString.split(",");
+
+  newMembersString.map((memberId) => {
+    conversationMembersArray.map((member) => {
+      if (memberId !== member) {
+        conversation.members.push(memberId);
+      }
+    });
+  });
+  await conversation.save();
+
+  res.status(200).json({
+    message: "Image updated successfully",
+    group: conversation,
+  });
+};
+
 const messages = async (req, res) => {
   try {
     const {
@@ -577,4 +601,5 @@ module.exports = {
   deleteMessage,
   createGroup,
   updateImg,
+  addMemberOnGroup,
 };

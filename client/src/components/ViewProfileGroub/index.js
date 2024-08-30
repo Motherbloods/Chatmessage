@@ -7,6 +7,8 @@ const ViewProfileGroub = ({
   loggedId,
   groupData,
   fetchMessages,
+  socket,
+  fetchMessagess,
 }) => {
   const [sideBar, setSideBar] = useState("Overview"); // Ubah menjadi useState
   const [searchTerm, setSearchTerm] = useState("");
@@ -91,6 +93,43 @@ const ViewProfileGroub = ({
   // .filter((name) => {
   //   return name.includes(searchTerm.toLowerCase());
   // });
+
+  const addMembersGroup = async (id) => {
+    const newMembers = ["661dee0d8a59ab32b12054a8", "66238555a33b2c523786da2b"];
+    const res = await fetch(
+      ` http://127.0.0.1:8000/api/membersUpdate/${id}?newMember=${newMembers}`,
+      {
+        method: "PATCH",
+      }
+    );
+    if (!res.ok) {
+      console.error("Couldn't");
+    } else {
+      const resData = await res.json();
+      const currentDate = new Date();
+      socket.emit("sendConversations", {
+        conversationId: resData.group._id,
+        senderId: resData.group.admin,
+        receiverId: resData.group.members,
+        message: null,
+        date: currentDate.toISOString(),
+        admin: resData.group.admin,
+        type: resData.group.type,
+        name: resData.group.name,
+        img: resData.group.img,
+        description: resData.group.description,
+      });
+      fetchMessagess(
+        resData.group._id,
+        resData.group.members,
+        "",
+        resData.group.type,
+        resData.group.name,
+        resData.group.admin,
+        false
+      );
+    }
+  };
   return (
     <div
       className={`flex w-96 h-[400px] bg-[#343434] p-[5px] rounded-lg shadow-lg text-white `}
@@ -173,6 +212,7 @@ const ViewProfileGroub = ({
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+
           {searchTerm ? (
             <div className="flex flex-col my-2">
               {filteredMembers.map((user) => (
@@ -266,6 +306,12 @@ const ViewProfileGroub = ({
               ))}
             </div>
           )}
+          <button
+            className=" justify-center items-center rounded h-[10%] w-32 bg-orange-400"
+            onClick={() => addMembersGroup(conversation.conversationId)}
+          >
+            Add Member
+          </button>
         </div>
       )}
 

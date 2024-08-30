@@ -31,6 +31,7 @@ const {
   deleteMessage,
   createGroup,
   updateImg,
+  addMemberOnGroup,
 } = require("../controller/index.controller");
 
 router.post("/api/register", upload.single("img"), register);
@@ -43,5 +44,6 @@ router.get("/api/messages/:conversationId", getMessages);
 router.get("/api/users/:userId", getUsers);
 router.delete("/api/message/:messageId", deleteMessage);
 router.patch("/api/imgUpdate/:id", upload.single("img"), updateImg);
+router.patch("/api/membersUpdate/:id", addMemberOnGroup);
 
 module.exports = router;
